@@ -115,11 +115,11 @@ class AlpacaFinnhubPipeline:
             return pd.DataFrame(columns=["Date", "Close", "Volume"])
 
     # ==========================================
-    # 2. PE 基本面 — Finnhub /stock/metric
+    # 2. PE 基本面 — Finnhub /stock/metric (历史 + 当前)
     # ==========================================
     def fetch_pe_ratio(self):
-        """获取当前 PE (TTM)"""
-        print(f"[-] 正在从 Finnhub 获取 {self.ticker} PE 指标...")
+        """获取当前 PE (TTM) — 快照，用于增量更新"""
+        print(f"[-] 正在从 Finnhub 获取 {self.ticker} 当前 PE 指标...")
         data = self._finnhub_get("/stock/metric", params={
             "symbol": self.ticker,
             "metric": "all"
@@ -134,6 +134,75 @@ class AlpacaFinnhubPipeline:
 
         print(f"[+] PE_Ratio (TTM) = {pe}")
         return float(pe) if pe is not None else np.nan
+
+    def fetch_historical_pe(self, hist_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算每日历史 PE:
+        1. 从 Finnhub /stock/metric series 获取季度 EPS (115+ 个季度)
+        2. 滚动 4 季求和 → TTM EPS
+        3. Forward-fill 到每个交易日
+        4. PE_daily = Close / EPS_TTM
+
+        参数: hist_df 需包含 Date, Close 列
+        返回: hist_df 附加 PE_Ratio 列
+        """
+        print(f"[-] 正在从 Finnhub 获取 {self.ticker} 季度 EPS 历史序列...")
+        data = self._finnhub_get("/stock/metric", params={
+            "symbol": self.ticker,
+            "metric": "all"
+        }, description="季度 EPS 序列")
+
+        series = data.get("series", {})
+        quarterly = series.get("quarterly", {})
+        eps_list = quarterly.get("eps", [])
+
+        if not eps_list:
+            print("[-] 无季度 EPS 数据，降级使用当前快照 PE")
+            snapshot_pe = self.fetch_pe_ratio()
+            hist_df = hist_df.copy()
+            hist_df["PE_Ratio"] = snapshot_pe
+            return hist_df
+
+        # 构建季度 EPS DataFrame，按日期升序
+        eps_df = pd.DataFrame(eps_list)  # columns: period, v
+        eps_df = eps_df.rename(columns={"period": "Quarter_End", "v": "EPS"})
+        eps_df["Quarter_End"] = pd.to_datetime(eps_df["Quarter_End"])
+        eps_df = eps_df.sort_values("Quarter_End").reset_index(drop=True)
+
+        # 滚动 4 季求和 → TTM EPS
+        eps_df["EPS_TTM"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+        eps_df = eps_df.dropna(subset=["EPS_TTM"])
+        eps_df["Quarter_End_str"] = eps_df["Quarter_End"].dt.strftime("%Y-%m-%d")
+
+        print(f"[+] 季度 EPS: {len(eps_list)} 个季度，TTM EPS 可用: {len(eps_df)} 个")
+        print(f"    最近 TTM EPS = {eps_df['EPS_TTM'].iloc[-1]:.4f} (截至 {eps_df['Quarter_End_str'].iloc[-1]})")
+
+        # 将 TTM EPS forward-fill 到每个交易日
+        hist_df = hist_df.copy()
+        hist_df["Date_dt"] = pd.to_datetime(hist_df["Date"])
+
+        def get_ttm_eps(date_val):
+            """找到 ≤ date_val 的最近一个季度 TTM EPS"""
+            mask = eps_df["Quarter_End"] <= date_val
+            if mask.any():
+                return eps_df.loc[mask, "EPS_TTM"].iloc[-1]
+            return np.nan
+
+        hist_df["EPS_TTM"] = hist_df["Date_dt"].apply(get_ttm_eps)
+        hist_df["PE_Ratio"] = np.where(
+            hist_df["EPS_TTM"] > 0,
+            hist_df["Close"] / hist_df["EPS_TTM"],
+            np.nan
+        )
+        hist_df["PE_Ratio"] = hist_df["PE_Ratio"].round(4)
+
+        # 清理临时列
+        hist_df = hist_df.drop(columns=["Date_dt", "EPS_TTM"])
+
+        pe_min = hist_df["PE_Ratio"].min()
+        pe_max = hist_df["PE_Ratio"].max()
+        print(f"[+] 每日历史 PE 计算完成: 范围 {pe_min:.2f} ~ {pe_max:.2f}")
+        return hist_df
 
     # ==========================================
     # 3. 新闻 — Alpaca News API (v1beta1，自动分页)
@@ -253,8 +322,8 @@ class AlpacaFinnhubPipeline:
             print("[FATAL] 无法获取历史量价，退出")
             sys.exit(1)
 
-        # Step 2: PE
-        pe_ratio = self.fetch_pe_ratio()
+        # Step 2: 计算每日历史 PE (基于季度 EPS)
+        hist = self.fetch_historical_pe(hist)
 
         # Step 3: 新闻
         news_df = self.fetch_news(start_date=news_start)
@@ -262,14 +331,12 @@ class AlpacaFinnhubPipeline:
             print("[WARNING] 无新闻数据，仅保存量价+PE")
             result = hist.copy()
             result["Ticker"] = self.ticker
-            result["PE_Ratio"] = pe_ratio
             result["Publisher"] = ""
             result["Headline"] = ""
         else:
-            # Step 4: inner join
-            result = pd.merge(news_df, hist[["Date", "Close", "Volume"]], on="Date", how="inner")
+            # Step 4: inner join (hist 已含 PE_Ratio)
+            result = pd.merge(news_df, hist[["Date", "Close", "Volume", "PE_Ratio"]], on="Date", how="inner")
             result["Ticker"] = self.ticker
-            result["PE_Ratio"] = pe_ratio
 
         # 统一列顺序
         result = result[["Date", "Ticker", "Close", "Volume", "PE_Ratio", "Publisher", "Headline"]]
@@ -347,19 +414,20 @@ class AlpacaFinnhubPipeline:
             print("[-] 无新的新闻数据")
             return pd.read_csv(self.cache_file)
 
-        # PE (Finnhub)
-        pe_ratio = self.fetch_pe_ratio()
+        # PE: 用历史 PE 计算（增量也用同一方法，保持一致性）
+        if not hist.empty:
+            hist = self.fetch_historical_pe(hist)
 
         # 合并
         if not hist.empty:
-            new_data = pd.merge(news_df, hist[["Date", "Close", "Volume"]], on="Date", how="inner")
+            new_data = pd.merge(news_df, hist[["Date", "Close", "Volume", "PE_Ratio"]], on="Date", how="inner")
         else:
             new_data = news_df.copy()
             new_data["Close"] = 0.0
             new_data["Volume"] = 0
+            new_data["PE_Ratio"] = self.fetch_pe_ratio()  # fallback: 快照
 
         new_data["Ticker"] = self.ticker
-        new_data["PE_Ratio"] = pe_ratio
         new_data = new_data[["Date", "Ticker", "Close", "Volume", "PE_Ratio", "Publisher", "Headline"]]
 
         # 追加去重
