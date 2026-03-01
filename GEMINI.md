@@ -1,48 +1,49 @@
 # 📈 StockMind - AI-Driven Stock Analysis
 
 ## 🎯 Project Overview
-**StockMind** is a nascent project designed for stock market analysis and prediction using machine learning techniques. The goal is to build a robust data pipeline that can fetch, preprocess, and model financial data to provide actionable insights.
+**StockMind** is an advanced data pipeline and analysis platform designed for stock market prediction using hybrid data sources. It integrates market data (OHLCV), fundamental metrics (PE Ratios), and financial news for sentiment-weighted analysis.
 
-### 🛠️ Core Technologies (Inferred)
-- **Language**: Python 3.10+
-- **Data Handling**: `pandas`, `numpy`
-- **Data Sourcing**: `yfinance`, `Alpha Vantage`, or similar APIs.
-- **Machine Learning**: `scikit-learn`, `PyTorch`, or `TensorFlow` (planned).
+### 🛠️ Core Technologies
+- **Language**: Python 3.14+ (Conda environment: `stock_mind`)
+- **APIs**:
+  - **Alpaca**: Used for stable historical daily bars and comprehensive news (Benzinga source).
+  - **Finnhub**: Used for historical and current fundamental metrics (Quarterly EPS/PE).
+  - **yfinance**: (Legacy/Secondary) used for additional market metadata.
+- **Data Handling**: `pandas`, `numpy`, `requests`.
 
 ## 🚀 Building and Running
 
-### Prerequisites
-Ensure you have Python 3.10 or higher installed. It is recommended to use a virtual environment:
+### Environment Setup
+The project uses a Conda environment named `stock_mind`.
 ```bash
-python -m venv venv
-source venv/bin/activate  # On macOS/Linux
+conda activate stock_mind
 ```
 
-### Installation
-Once the project is populated with dependencies, install them using:
-```bash
-# TODO: Create requirements.txt
-# pip install -r requirements.txt
-```
+### Key Commands
+- **Run the Hybrid Pipeline**: Fetches one year of historical data and news, then performs incremental updates.
+  ```bash
+  python dataset/alpaca_finnhub_pipeline.py
+  ```
 
-### Running the Pipeline
-To test the data pipeline (currently a skeleton):
-```bash
-python dataset/test_pipeline.py
-```
+## 📂 Directory Structure
 
-## 📂 Directory Overview
-
-- **`/dataset`**: This directory is dedicated to data ingestion, storage, and preprocessing scripts.
-    - `test_pipeline.py`: The entry point for validating the data pipeline logic.
-- **`GEMINI.md`**: This file (you are reading it) provides foundational context and instructions for AI-driven development.
+- **`/dataset`**: Contains core pipeline logic and data caches.
+    - `alpaca_finnhub_pipeline.py`: The main hybrid data ingestion engine.
+    - `*_news.csv`: Cached news articles from various sources.
+    - `*_hist_cache.csv`: Cached historical OHLCV data.
+- **`real_nvda_dataset.csv`**: The final fused feature matrix (Date, Ticker, Close, Volume, PE_Ratio, Publisher, Headline) used for modeling.
+- **`GEMINI.md`**: Foundational context and project mandates.
 
 ## 🧪 Development Conventions
 
-1.  **Type Hinting**: All Python code should use strict type hints (PEP 484).
-2.  **Documentation**: Use Google-style docstrings for all functions and classes.
-3.  **Testing**: New features must be accompanied by unit tests in a `tests/` directory (to be created).
-4.  **Data Safety**: Never commit API keys or sensitive financial credentials. Use `.env` files and `python-dotenv`.
+1.  **Hybrid Data Strategy**: Prefer Alpaca for news and bars to avoid the aggressive rate-limiting often encountered with yfinance.
+2.  **Robust Error Handling**:
+    - Always wrap API calls in try-except blocks.
+    - Implement exponential backoff for `429 Too Many Requests` errors (especially for Finnhub free tier).
+    - Provide fallback mechanisms (e.g., using current PE snapshot if historical EPS is unavailable).
+3.  **Local Caching**: Implement aggressive local CSV caching for all raw data to minimize API calls and speed up the "Seed Building" process.
+4.  **Data Consistency**: Ensure all timestamps are standardized to `YYYY-MM-DD` and aligned via inner joins on the `Date` column for the final feature matrix.
+5.  **Security**: Never commit API keys. Use environment variables or local configuration files (ensure `alpaca_key`, `finnhub_key`, etc., are protected).
 
 ---
-*Note: This project is in its early stages. Many files are currently placeholders.*
+*Note: This project is optimized for the Alpaca and Finnhub APIs. Ensure valid API keys are configured in the pipeline scripts.*

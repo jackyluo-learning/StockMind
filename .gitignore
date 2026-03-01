@@ -1,0 +1,17 @@
+# Large dataset files
+dataset/raw_partner_headlines.csv
+dataset/analyst_ratings_processed.csv
+dataset/raw_analyst_ratings.csv
+
+# Python/Environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.DS_Store
+
+# Local caches
+real_nvda_dataset.csv
+dataset/*_cache.csv
+dataset/*_news.csv
