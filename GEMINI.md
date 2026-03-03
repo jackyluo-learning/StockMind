@@ -47,3 +47,15 @@ conda activate stock_mind
 
 ---
 *Note: This project is optimized for the Alpaca and Finnhub APIs. Ensure valid API keys are configured in the pipeline scripts.*
+
+## 📈 Project Status
+
+### Recent Improvements (March 2026)
+- **Dynamic PE Ratio Computation**: Migrated from static snapshots to a dynamic calculation using historical quarterly EPS.
+    - Fetches 115+ quarters of EPS data from Finnhub.
+    - Computes TTM EPS via rolling 4-quarter sums.
+    - Aligns daily Alpaca closing prices with the most recent TTM EPS for a high-fidelity historical PE series.
+- **Pipeline Stability**: Standardized on Alpaca for both historical OHLCV and news (Benzinga) to eliminate `yfinance` rate-limiting bottlenecks.
+- **Incremental Sync**: Implemented a 7-day lookback for incremental updates, reducing API overhead and processing time for daily runs.
+- **Data Integrity**: Enforced strict inner-join alignment between news timestamps and market data trading days.
+- **Repository Hygiene**: Cleaned git index by removing large `.csv` datasets and local caches, favoring local-only persistence for data artifacts.

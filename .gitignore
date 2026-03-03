@@ -1,17 +1,41 @@
-# Large dataset files
-dataset/raw_partner_headlines.csv
-dataset/analyst_ratings_processed.csv
-dataset/raw_analyst_ratings.csv
+# Large dataset and feature matrix files
+real_*_dataset.csv
+dataset/*.csv
 
 # Python/Environment
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 venv/
 .env
-.DS_Store
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Local caches
-real_nvda_dataset.csv
-dataset/*_cache.csv
-dataset/*_news.csv
+# System
+.DS_Store
+Thumbs.db
+
+# VS Code/IDE
+.vscode/
+.idea/
+*.swp
+*.swo

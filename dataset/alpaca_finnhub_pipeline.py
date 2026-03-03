@@ -439,28 +439,58 @@ class AlpacaFinnhubPipeline:
         return combined
 
 
+import argparse
+
+# ... (rest of the imports)
+
 # ==========================================
 # Entry Point
 # ==========================================
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Alpaca + Finnhub Hybrid Data Pipeline")
+    parser.add_argument(
+        "tickers",
+        nargs="*",
+        help="Stock tickers to process (e.g., NVDA GOOGL). If omitted, you will be prompted.",
+    )
+    args = parser.parse_args()
+
+    # API Keys (Ideally these should be in environment variables)
     ALPACA_KEY    = "PK6FYKALELA4WL7K47AD2UC626"
     ALPACA_SECRET = "A5mWQGEDL2uwEtWGVkuRkVCAAnp1qGKnQJ5e5osoRQ64"
     FINNHUB_KEY   = "d6hksupr01qr5k4ccku0d6hksupr01qr5k4cckug"
 
-    pipeline = AlpacaFinnhubPipeline(
-        alpaca_key=ALPACA_KEY,
-        alpaca_secret=ALPACA_SECRET,
-        finnhub_key=FINNHUB_KEY,
-        ticker="NVDA",
-        cache_file="real_nvda_dataset.csv",
-    )
+    # Determine tickers to process
+    tickers = args.tickers
+    if not tickers:
+        user_input = input("Enter ticker symbols separated by spaces (e.g., NVDA GOOGL): ").strip()
+        if user_input:
+            tickers = [t.strip().upper() for t in user_input.split()]
+        else:
+            print("[-] No tickers provided. Exiting.")
+            sys.exit(0)
 
-    # First run: build last 1 year dataset
-    # Subsequent runs: incremental update (last 7 days)
-    if os.path.exists(pipeline.cache_file):
-        df = pipeline.update()
-    else:
-        df = pipeline.build_dataset()
+    for ticker in tickers:
+        print(f"\n{'#'*60}")
+        print(f"  Processing Ticker: {ticker}")
+        print(f"{'#'*60}")
 
-    print(f"\n--- Feature Matrix (Top 10 Rows) ---")
-    print(df.head(10).to_string(index=False))
+        cache_file = f"real_{ticker.lower()}_dataset.csv"
+        
+        pipeline = AlpacaFinnhubPipeline(
+            alpaca_key=ALPACA_KEY,
+            alpaca_secret=ALPACA_SECRET,
+            finnhub_key=FINNHUB_KEY,
+            ticker=ticker,
+            cache_file=cache_file,
+        )
+
+        # First run: build last 1 year dataset
+        # Subsequent runs: incremental update (last 7 days)
+        if os.path.exists(pipeline.cache_file):
+            df = pipeline.update()
+        else:
+            df = pipeline.build_dataset()
+
+        print(f"\n--- Feature Matrix (Top 5 Rows for {ticker}) ---")
+        print(df.head(5).to_string(index=False))
