@@ -28,7 +28,7 @@ class AlpacaFinnhubPipeline:
         alpaca_secret: str,
         finnhub_key: str,
         ticker: str = "NVDA",
-        cache_file: str = "real_nvda_dataset.csv",
+        cache_file: str = "dataset/real_nvda_dataset.csv",
     ):
         self.ticker = ticker
         self.cache_file = cache_file
@@ -475,7 +475,7 @@ if __name__ == "__main__":
         print(f"  Processing Ticker: {ticker}")
         print(f"{'#'*60}")
 
-        cache_file = f"real_{ticker.lower()}_dataset.csv"
+        cache_file = f"dataset/real_{ticker.lower()}_dataset.csv"
         
         pipeline = AlpacaFinnhubPipeline(
             alpaca_key=ALPACA_KEY,
