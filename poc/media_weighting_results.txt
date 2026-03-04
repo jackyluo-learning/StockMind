@@ -1,0 +1,14 @@
+ST545 POC Step 3: Media Weighting Results
+========================================
+Combined Dataset Size: 10723
+Total Initial Features: 203
+Features Retained by Lasso: 7
+
+Top 20 Features (Non-zero Weights):
+PE_Ratio: -0.063691
+Volume: -0.042922
+Pub_benzinga_ai: 0.038048
+Pub_benzinga_openai: -0.013888
+ai: 0.000691
+openai: -0.000199
+Pub_benzinga: 0.000037

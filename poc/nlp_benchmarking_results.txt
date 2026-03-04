@@ -1,0 +1,9 @@
+ST545 POC Step 5: NLP Benchmarking (TF-IDF vs FinBERT)
+====================================================
+Subset Size: 1000
+
+Metric     | TF-IDF     | FinBERT   
+-----------------------------------
+Acc        | 0.5900     | 0.4600    
+AUC        | 0.5927     | 0.5902    
+F1         | 0.5444     | 0.0000    

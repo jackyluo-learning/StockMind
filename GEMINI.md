@@ -9,7 +9,7 @@
   - **Alpaca**: Used for stable historical daily bars and comprehensive news (Benzinga source).
   - **Finnhub**: Used for historical and current fundamental metrics (Quarterly EPS/PE).
   - **yfinance**: (Legacy/Secondary) used for additional market metadata.
-- **Data Handling**: `pandas`, `numpy`, `requests`.
+- **Data Handling**: `pandas`, `numpy`, `requests`, `scikit-learn`, `xgboost`, `shap`, `transformers`.
 
 ## 🚀 Building and Running
 
@@ -20,30 +20,37 @@ conda activate stock_mind
 ```
 
 ### Key Commands
-- **Run the Hybrid Pipeline**: Fetches one year of historical data and news, then performs incremental updates.
+- **Run the Hybrid Pipeline**: Fetches historical data and news, saving to the `dataset/` directory.
   ```bash
   python dataset/alpaca_finnhub_pipeline.py
+  ```
+- **Execute ST545 POC**: Run the consolidated modeling and interpretability analysis.
+  ```bash
+  python poc/step4_xgboost_shap.py
   ```
 
 ## 📂 Directory Structure
 
-- **`/dataset`**: Contains core pipeline logic and data caches.
-    - `alpaca_finnhub_pipeline.py`: The main hybrid data ingestion engine.
-    - `*_news.csv`: Cached news articles from various sources.
-    - `*_hist_cache.csv`: Cached historical OHLCV data.
-- **`real_nvda_dataset.csv`**: The final fused feature matrix (Date, Ticker, Close, Volume, PE_Ratio, Publisher, Headline) used for modeling.
-- **`GEMINI.md`**: Foundational context and project mandates.
+- **`/dataset`**: Core pipeline logic and consolidated data storage.
+    - `alpaca_finnhub_pipeline.py`: Main hybrid data ingestion engine.
+    - `real_*_dataset.csv`: Final fused feature matrices for modeling (NVDA, MSFT, GOOGL).
+    - `*_news.csv`, `*_hist_cache.csv`: Local data artifacts.
+- **`/poc`**: Proof of Concept for ST545 project modeling.
+    - `step1_2_eda_tfidf.py`: Initial EDA and TF-IDF baseline.
+    - `step3_media_weighting.py`: Lasso-based automated publisher signal weighting.
+    - `step4_xgboost_shap.py`: Consolidated nonlinear interaction modeling and SHAP visualization.
+    - `step5_finbert_benchmarking.py`: Comparative NLP analysis (TF-IDF vs. FinBERT).
+- **`ST545_Final_Project_Proposal_Draft.md`**: Current proposal documentation for ST545.
 
 ## 🧪 Development Conventions
 
 1.  **Hybrid Data Strategy**: Prefer Alpaca for news and bars to avoid the aggressive rate-limiting often encountered with yfinance.
 2.  **Robust Error Handling**:
     - Always wrap API calls in try-except blocks.
-    - Implement exponential backoff for `429 Too Many Requests` errors (especially for Finnhub free tier).
-    - Provide fallback mechanisms (e.g., using current PE snapshot if historical EPS is unavailable).
-3.  **Local Caching**: Implement aggressive local CSV caching for all raw data to minimize API calls and speed up the "Seed Building" process.
-4.  **Data Consistency**: Ensure all timestamps are standardized to `YYYY-MM-DD` and aligned via inner joins on the `Date` column for the final feature matrix.
-5.  **Security**: Never commit API keys. Use environment variables or local configuration files (ensure `alpaca_key`, `finnhub_key`, etc., are protected).
+    - Implement exponential backoff for `429 Too Many Requests` (especially for Finnhub free tier).
+3.  **Local Caching**: Implement aggressive local CSV caching for all raw data. **All dataset outputs must be saved to the `/dataset` folder.**
+4.  **Data Consistency**: Ensure all timestamps are standardized to `YYYY-MM-DD` and aligned via inner joins on the `Date` column.
+5.  **Nonlinear Modeling**: For ST545 modeling, prioritize **XGBoost** with **SHAP** interpretability to capture valuation-sentiment interactions.
 
 ---
 *Note: This project is optimized for the Alpaca and Finnhub APIs. Ensure valid API keys are configured in the pipeline scripts.*
@@ -51,11 +58,11 @@ conda activate stock_mind
 ## 📈 Project Status
 
 ### Recent Improvements (March 2026)
-- **Dynamic PE Ratio Computation**: Migrated from static snapshots to a dynamic calculation using historical quarterly EPS.
-    - Fetches 115+ quarters of EPS data from Finnhub.
-    - Computes TTM EPS via rolling 4-quarter sums.
-    - Aligns daily Alpaca closing prices with the most recent TTM EPS for a high-fidelity historical PE series.
-- **Pipeline Stability**: Standardized on Alpaca for both historical OHLCV and news (Benzinga) to eliminate `yfinance` rate-limiting bottlenecks.
-- **Incremental Sync**: Implemented a 7-day lookback for incremental updates, reducing API overhead and processing time for daily runs.
-- **Data Integrity**: Enforced strict inner-join alignment between news timestamps and market data trading days.
-- **Repository Hygiene**: Cleaned git index by removing large `.csv` datasets and local caches, favoring local-only persistence for data artifacts.
+- **ST545 POC Validation**: Successfully completed a comprehensive POC phase.
+    - **Lasso Weighting**: Validated automated media weighting via L1 regularization (reduced 200+ noise features to 7 key signals).
+    - **Nonlinear Boost**: Confirmed that XGBoost significantly outperforms linear baselines (ROC-AUC jump from 0.57 to 0.90+ on full feature sets).
+    - **FinBERT Integration**: Benchmarked contextual FinBERT embeddings against traditional TF-IDF metrics.
+    - **Interpretability**: Implemented SHAP interaction plots to visualize how `PE_Ratio` modulates `Sentiment_Score`.
+- **Pipeline Standardization**: Updated `alpaca_finnhub_pipeline.py` to automatically save all ticker datasets into the `dataset/` directory.
+- **Repository Consolidation**: Relocated all `*_dataset.csv` files from the root to the `dataset/` folder for better workspace organization.
+- **Dynamic PE Ratio**: (Previous) Migrated from static snapshots to historical quarterly EPS-based dynamic computation.

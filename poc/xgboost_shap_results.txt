@@ -1,0 +1,9 @@
+ST545 POC Step 4 (Consolidated): XGBoost & SHAP Interaction Results
+==================================================================
+XGBoost Accuracy: 0.6400
+XGBoost ROC-AUC: 0.6980
+
+Interaction figures generated in poc/:
+- interact_pe_sentiment.png
+- interact_pe_volume.png
+- interact_volume_sentiment.png

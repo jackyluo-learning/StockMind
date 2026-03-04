@@ -1,0 +1,17 @@
+ST545 POC Step 1 & 2 Results
+============================
+Dataset Rows: 4713
+Price Label Balance (Up/Down): 49.99%
+Baseline Accuracy: 0.5345
+Baseline AUC: 0.5728
+
+Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.54      0.52      0.53       472
+           1       0.53      0.55      0.54       471
+
+    accuracy                           0.53       943
+   macro avg       0.53      0.53      0.53       943
+weighted avg       0.53      0.53      0.53       943
+

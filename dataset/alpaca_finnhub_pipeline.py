@@ -1,8 +1,14 @@
 """
-Alpaca + Finnhub Hybrid Data Pipeline
- - Alpaca: Historical daily OHLCV (bars), News (news)  ← Stable, no 429 issues
- - Finnhub: PE fundamentals (/stock/metric)
-Output format: Date, Ticker, Close, Volume, PE_Ratio, Publisher, Headline
+Alpaca + Finnhub Hybrid Data Pipeline v2
+=========================================
+Data Sources:
+ - Alpaca:   Historical daily OHLCV (bars) + News (Benzinga)
+ - Finnhub:  PE fundamentals (/stock/metric) + Company News (Yahoo, SeekingAlpha, CNBC, etc.)
+
+Output (split datasets, date-aligned):
+ - {TICKER}_market.csv : Date, Ticker, Close, Volume, PE_Ratio
+ - {TICKER}_news.csv   : Date, Ticker, Publisher, Headline
+Both share the same date range (inner join on Date).
 """
 
 import pandas as pd
@@ -28,21 +34,27 @@ class AlpacaFinnhubPipeline:
         alpaca_secret: str,
         finnhub_key: str,
         ticker: str = "NVDA",
-        cache_file: str = "dataset/real_nvda_dataset.csv",
     ):
         self.ticker = ticker
-        self.cache_file = cache_file
-        self.hist_cache_file = f"dataset/{ticker}_hist_cache.csv"
-        self.news_cache_file = f"dataset/{ticker}_alpaca_news.csv"
 
-        # ── Alpaca client (paper-trading key is sufficient for market data) ──
+        # ── Output paths (split datasets) ──
+        self.market_file = f"dataset/{ticker}_market.csv"
+        self.news_file = f"dataset/{ticker}_news.csv"
+
+        # ── Cache paths (raw API responses) ──
+        self.hist_cache_file = f"dataset/{ticker}_hist_cache.csv"
+        self.alpaca_news_cache = f"dataset/{ticker}_alpaca_news.csv"
+        self.finnhub_news_cache = f"dataset/{ticker}_finnhub_news.csv"
+
+        # ── Alpaca client ──
         self.alpaca = StockHistoricalDataClient(alpaca_key, alpaca_secret)
         self.alpaca_key = alpaca_key
         self.alpaca_secret = alpaca_secret
 
-        # ── Finnhub session (used only for PE) ──
+        # ── Finnhub session ──
         self.fh_session = requests.Session()
         self.fh_session.params = {"token": finnhub_key}
+        self.finnhub_key = finnhub_key
 
     # ==========================================
     # Utilities
@@ -54,7 +66,7 @@ class AlpacaFinnhubPipeline:
             resp = self.fh_session.get(url, params=params, timeout=15)
             if resp.status_code == 429:
                 delay = 5 * (2 ** (attempt - 1))
-                print(f"[Retry {attempt}/3] Finnhub {description} rate-limited, waiting {delay}s...")
+                print(f"  [Retry {attempt}/3] Finnhub {description} rate-limited, waiting {delay}s...")
                 time.sleep(delay)
                 continue
             resp.raise_for_status()
@@ -69,12 +81,11 @@ class AlpacaFinnhubPipeline:
         Fetch daily historical OHLCV via Alpaca StockBarsRequest.
         Returns DataFrame: Date, Close, Volume
         """
-        # Read from local cache first
         if os.path.exists(self.hist_cache_file):
-            print(f"[+] Found local OHLCV cache: {self.hist_cache_file}")
+            print(f"  [cache] OHLCV: {self.hist_cache_file}")
             hist = pd.read_csv(self.hist_cache_file)
             if not hist.empty:
-                print(f"    Cached {len(hist)} rows ({hist['Date'].min()} ~ {hist['Date'].max()})")
+                print(f"    {len(hist)} rows ({hist['Date'].min()} ~ {hist['Date'].max()})")
                 return hist
 
         if start_date is None:
@@ -82,7 +93,7 @@ class AlpacaFinnhubPipeline:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
 
-        print(f"[-] Fetching {self.ticker} daily bars from Alpaca ({start_date} ~ {end_date})...")
+        print(f"  [fetch] Alpaca bars ({start_date} ~ {end_date})...")
 
         try:
             request = StockBarsRequest(
@@ -92,14 +103,12 @@ class AlpacaFinnhubPipeline:
                 end=datetime.strptime(end_date, "%Y-%m-%d"),
             )
             bars = self.alpaca.get_stock_bars(request)
-            bars_df = bars.df  # MultiIndex: (symbol, timestamp)
+            bars_df = bars.df.reset_index()
 
             if bars_df.empty:
-                print("[-] Alpaca returned empty data")
+                print("  [warn] Alpaca returned empty data")
                 return pd.DataFrame(columns=["Date", "Close", "Volume"])
 
-            # Reset index, extract Date
-            bars_df = bars_df.reset_index()
             hist = pd.DataFrame({
                 "Date": pd.to_datetime(bars_df["timestamp"]).dt.strftime("%Y-%m-%d"),
                 "Close": bars_df["close"],
@@ -107,82 +116,61 @@ class AlpacaFinnhubPipeline:
             }).drop_duplicates(subset=["Date"]).sort_values("Date")
 
             hist.to_csv(self.hist_cache_file, index=False)
-            print(f"[+] Historical OHLCV: {len(hist)} rows ({hist['Date'].min()} ~ {hist['Date'].max()}), cached")
+            print(f"  [done] OHLCV: {len(hist)} rows, cached")
             return hist
 
         except Exception as e:
-            print(f"[-] Alpaca Bars API error: {e}")
+            print(f"  [error] Alpaca Bars API: {e}")
             return pd.DataFrame(columns=["Date", "Close", "Volume"])
 
     # ==========================================
-    # 2. PE Fundamentals — Finnhub /stock/metric (historical + current)
+    # 2. PE Fundamentals — Finnhub
     # ==========================================
     def fetch_pe_ratio(self):
-        """Fetch current PE (TTM) snapshot — used as fallback for incremental updates"""
-        print(f"[-] Fetching {self.ticker} current PE from Finnhub...")
+        """Fetch current PE (TTM) snapshot — fallback only"""
         data = self._finnhub_get("/stock/metric", params={
             "symbol": self.ticker,
             "metric": "all"
-        }, description="PE fundamentals")
-
+        }, description="PE snapshot")
         metric = data.get("metric", {})
-        pe = metric.get("peBasicExclExtraTTM")
-        if pe is None:
-            pe = metric.get("peTTM")
-        if pe is None:
-            pe = metric.get("peExclExtraTTM", np.nan)
-
-        print(f"[+] PE_Ratio (TTM) = {pe}")
+        pe = metric.get("peBasicExclExtraTTM") or metric.get("peTTM") or metric.get("peExclExtraTTM", np.nan)
         return float(pe) if pe is not None else np.nan
 
     def fetch_historical_pe(self, hist_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Compute daily historical PE:
-        1. Fetch quarterly EPS from Finnhub /stock/metric series (115+ quarters)
+        Compute daily historical PE from quarterly EPS:
+        1. Fetch quarterly EPS from Finnhub
         2. Rolling 4-quarter sum -> TTM EPS
         3. Forward-fill to each trading day
-        4. PE_daily = Close / EPS_TTM
-
-        Args: hist_df must contain Date, Close columns
-        Returns: hist_df with PE_Ratio column appended
+        4. PE = Close / EPS_TTM
         """
-        print(f"[-] Fetching {self.ticker} quarterly EPS history from Finnhub...")
+        print(f"  [fetch] Finnhub quarterly EPS...")
         data = self._finnhub_get("/stock/metric", params={
             "symbol": self.ticker,
             "metric": "all"
-        }, description="quarterly EPS series")
+        }, description="quarterly EPS")
 
         series = data.get("series", {})
-        quarterly = series.get("quarterly", {})
-        eps_list = quarterly.get("eps", [])
+        eps_list = series.get("quarterly", {}).get("eps", [])
 
         if not eps_list:
-            print("[-] No quarterly EPS data available, falling back to current PE snapshot")
-            snapshot_pe = self.fetch_pe_ratio()
+            print("  [warn] No quarterly EPS data, using snapshot PE")
             hist_df = hist_df.copy()
-            hist_df["PE_Ratio"] = snapshot_pe
+            hist_df["PE_Ratio"] = self.fetch_pe_ratio()
             return hist_df
 
-        # Build quarterly EPS DataFrame, sorted by date ascending
-        eps_df = pd.DataFrame(eps_list)  # columns: period, v
-        eps_df = eps_df.rename(columns={"period": "Quarter_End", "v": "EPS"})
+        eps_df = pd.DataFrame(eps_list).rename(columns={"period": "Quarter_End", "v": "EPS"})
         eps_df["Quarter_End"] = pd.to_datetime(eps_df["Quarter_End"])
         eps_df = eps_df.sort_values("Quarter_End").reset_index(drop=True)
-
-        # Rolling 4-quarter sum -> TTM EPS
         eps_df["EPS_TTM"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
         eps_df = eps_df.dropna(subset=["EPS_TTM"])
-        eps_df["Quarter_End_str"] = eps_df["Quarter_End"].dt.strftime("%Y-%m-%d")
 
-        print(f"[+] Quarterly EPS: {len(eps_list)} quarters, TTM EPS available: {len(eps_df)}")
-        print(f"    Latest TTM EPS = {eps_df['EPS_TTM'].iloc[-1]:.4f} (as of {eps_df['Quarter_End_str'].iloc[-1]})")
+        print(f"  [done] {len(eps_list)} quarters, TTM EPS = {eps_df['EPS_TTM'].iloc[-1]:.4f}")
 
-        # Forward-fill TTM EPS to each trading day
         hist_df = hist_df.copy()
         hist_df["Date_dt"] = pd.to_datetime(hist_df["Date"])
 
         def get_ttm_eps(date_val):
-            """Find the most recent quarterly TTM EPS <= date_val"""
             mask = eps_df["Quarter_End"] <= date_val
             if mask.any():
                 return eps_df.loc[mask, "EPS_TTM"].iloc[-1]
@@ -195,30 +183,24 @@ class AlpacaFinnhubPipeline:
             np.nan
         )
         hist_df["PE_Ratio"] = hist_df["PE_Ratio"].round(4)
-
-        # Drop temporary columns
         hist_df = hist_df.drop(columns=["Date_dt", "EPS_TTM"])
 
-        pe_min = hist_df["PE_Ratio"].min()
-        pe_max = hist_df["PE_Ratio"].max()
-        print(f"[+] Daily historical PE computed: range {pe_min:.2f} ~ {pe_max:.2f}")
+        print(f"  [done] PE range: {hist_df['PE_Ratio'].min():.2f} ~ {hist_df['PE_Ratio'].max():.2f}")
         return hist_df
 
     # ==========================================
-    # 3. News — Alpaca News API (v1beta1, auto-pagination)
+    # 3a. News — Alpaca News API (Benzinga source)
     # ==========================================
-    def fetch_news(self, start_date: str = None, end_date: str = None):
+    def fetch_alpaca_news(self, start_date: str = None, end_date: str = None):
         """
-        Fetch company news via Alpaca v1beta1/news (Benzinga data source).
-        Free tier: max 50 per request, supports page_token pagination.
+        Fetch news via Alpaca v1beta1/news (Benzinga).
         Returns DataFrame: Date, Publisher, Headline
         """
-        # Read from local cache first
-        if os.path.exists(self.news_cache_file):
-            print(f"[+] Found local news cache: {self.news_cache_file}")
-            news_df = pd.read_csv(self.news_cache_file)
+        if os.path.exists(self.alpaca_news_cache):
+            print(f"  [cache] Alpaca news: {self.alpaca_news_cache}")
+            news_df = pd.read_csv(self.alpaca_news_cache)
             if not news_df.empty:
-                print(f"    Cached {len(news_df)} articles")
+                print(f"    {len(news_df)} articles")
                 return news_df
 
         if start_date is None:
@@ -226,7 +208,7 @@ class AlpacaFinnhubPipeline:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
 
-        print(f"[-] Fetching {self.ticker} news from Alpaca News API ({start_date} ~ {end_date})...")
+        print(f"  [fetch] Alpaca news ({start_date} ~ {end_date})...")
 
         news_url = "https://data.alpaca.markets/v1beta1/news"
         headers = {
@@ -237,7 +219,7 @@ class AlpacaFinnhubPipeline:
         all_news = []
         page_token = None
         page = 0
-        MAX_PAGES = 200  # Safety cap: 200 * 50 = 10,000 articles
+        MAX_PAGES = 200
 
         while page < MAX_PAGES:
             params = {
@@ -253,7 +235,7 @@ class AlpacaFinnhubPipeline:
             try:
                 resp = requests.get(news_url, headers=headers, params=params, timeout=15)
                 if resp.status_code == 429:
-                    print(f"  Rate-limited, waiting 5s...")
+                    print(f"    Rate-limited, waiting 5s...")
                     time.sleep(5)
                     continue
                 resp.raise_for_status()
@@ -264,9 +246,8 @@ class AlpacaFinnhubPipeline:
                     break
 
                 for a in articles:
-                    created = a.get("created_at", "")[:10]  # "2025-03-15T..."
                     all_news.append({
-                        "Date": created,
+                        "Date": a.get("created_at", "")[:10],
                         "Publisher": a.get("source", "Unknown"),
                         "Headline": a.get("headline", ""),
                     })
@@ -277,93 +258,219 @@ class AlpacaFinnhubPipeline:
 
                 page += 1
                 if page % 10 == 0:
-                    print(f"  Fetched {len(all_news)} articles (page {page})...")
-                time.sleep(0.2)  # Polite delay
+                    print(f"    {len(all_news)} articles (page {page})...")
+                time.sleep(0.2)
 
             except Exception as e:
-                print(f"  News API error: {e}")
+                print(f"    Alpaca news error: {e}")
                 break
 
         if not all_news:
-            print("[-] No news articles retrieved")
             return pd.DataFrame(columns=["Date", "Publisher", "Headline"])
 
         news_df = pd.DataFrame(all_news)
         news_df = news_df.drop_duplicates(subset=["Date", "Publisher", "Headline"])
         news_df = news_df.sort_values("Date", ascending=False)
 
-        news_df.to_csv(self.news_cache_file, index=False)
-        print(f"[+] News fetched: {len(news_df)} articles, cached to {self.news_cache_file}")
+        news_df.to_csv(self.alpaca_news_cache, index=False)
+        print(f"  [done] Alpaca news: {len(news_df)} articles, cached")
         return news_df
 
     # ==========================================
-    # 4. Main Pipeline: Data Fusion + Output
+    # 3b. News — Finnhub /company-news (multi-publisher)
+    # ==========================================
+    def fetch_finnhub_news(self, start_date: str = None, end_date: str = None):
+        """
+        Fetch news via Finnhub /company-news endpoint.
+        Returns diverse publishers: Yahoo, SeekingAlpha, MarketWatch, CNBC, etc.
+        Finnhub free tier: 1 year of news, paginated by date chunks.
+        """
+        if os.path.exists(self.finnhub_news_cache):
+            print(f"  [cache] Finnhub news: {self.finnhub_news_cache}")
+            news_df = pd.read_csv(self.finnhub_news_cache)
+            if not news_df.empty:
+                print(f"    {len(news_df)} articles")
+                return news_df
+
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        print(f"  [fetch] Finnhub company news ({start_date} ~ {end_date})...")
+
+        # Finnhub /company-news returns max ~100 articles per call.
+        # To get full coverage, we chunk by month.
+        all_news = []
+        chunk_start = datetime.strptime(start_date, "%Y-%m-%d")
+        chunk_end_limit = datetime.strptime(end_date, "%Y-%m-%d")
+
+        while chunk_start < chunk_end_limit:
+            chunk_end = min(chunk_start + timedelta(days=30), chunk_end_limit)
+            cs = chunk_start.strftime("%Y-%m-%d")
+            ce = chunk_end.strftime("%Y-%m-%d")
+
+            try:
+                articles = self._finnhub_get(
+                    "/company-news",
+                    params={"symbol": self.ticker, "from": cs, "to": ce},
+                    description=f"news {cs}~{ce}"
+                )
+
+                if isinstance(articles, list):
+                    for a in articles:
+                        dt = a.get("datetime")
+                        if dt:
+                            date_str = datetime.fromtimestamp(dt).strftime("%Y-%m-%d")
+                        else:
+                            continue
+
+                        headline = a.get("headline", "").strip()
+                        source = a.get("source", "Unknown").strip()
+
+                        if headline:
+                            all_news.append({
+                                "Date": date_str,
+                                "Publisher": source,
+                                "Headline": headline,
+                            })
+
+                count = len(articles) if isinstance(articles, list) else 0
+                print(f"    {cs} ~ {ce}: {count} articles")
+
+            except Exception as e:
+                print(f"    Finnhub news error ({cs}~{ce}): {e}")
+
+            chunk_start = chunk_end + timedelta(days=1)
+            time.sleep(1)  # Finnhub free tier: 60 req/min
+
+        if not all_news:
+            return pd.DataFrame(columns=["Date", "Publisher", "Headline"])
+
+        news_df = pd.DataFrame(all_news)
+        news_df = news_df.drop_duplicates(subset=["Date", "Publisher", "Headline"])
+        news_df = news_df.sort_values("Date", ascending=False)
+
+        news_df.to_csv(self.finnhub_news_cache, index=False)
+        print(f"  [done] Finnhub news: {len(news_df)} articles, cached")
+        return news_df
+
+    # ==========================================
+    # 3c. Merge News from Both Sources
+    # ==========================================
+    def fetch_all_news(self, start_date: str = None, end_date: str = None):
+        """
+        Combine Alpaca (Benzinga) + Finnhub (Yahoo, SeekingAlpha, CNBC, etc.)
+        Deduplicate by (Date, Headline) to avoid exact duplicates across sources.
+        """
+        alpaca_news = self.fetch_alpaca_news(start_date, end_date)
+        finnhub_news = self.fetch_finnhub_news(start_date, end_date)
+
+        combined = pd.concat([alpaca_news, finnhub_news], ignore_index=True)
+
+        # Deduplicate: same headline on same day (even from different publishers)
+        combined = combined.drop_duplicates(subset=["Date", "Headline"])
+        combined = combined.sort_values("Date", ascending=False).reset_index(drop=True)
+
+        publishers = combined["Publisher"].value_counts()
+        print(f"\n  [summary] Combined news: {len(combined)} unique articles")
+        print(f"  Publisher distribution:")
+        for pub, count in publishers.head(10).items():
+            print(f"    {pub:20s} : {count}")
+
+        return combined
+
+    # ==========================================
+    # 4. Main Pipeline: Build Split Datasets
     # ==========================================
     def build_dataset(self, news_start: str = None):
         """
-        Build complete feature matrix:
-        1. Historical OHLCV (Alpaca Bars)
-        2. PE (Finnhub quarterly EPS)
-        3. News (Alpaca News)
-        4. Inner join on Date
-        5. Output CSV
+        Build two date-aligned datasets:
+         1. {TICKER}_market.csv : Date, Ticker, Close, Volume, PE_Ratio
+         2. {TICKER}_news.csv   : Date, Ticker, Publisher, Headline
+
+        Both share the same set of dates (inner join).
         """
         one_year_ago = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
         if news_start is None:
             news_start = one_year_ago
 
         print(f"\n{'='*60}")
-        print(f"  Alpaca + Finnhub Pipeline — {self.ticker}")
+        print(f"  Pipeline v2 — {self.ticker}")
         print(f"{'='*60}")
 
-        # Step 1: Historical OHLCV
+        # ── Step 1: Historical OHLCV ──
+        print("\n[1/4] Historical OHLCV (Alpaca)")
         hist = self.fetch_history(start_date=one_year_ago)
         if hist.empty:
-            print("[FATAL] Failed to fetch historical OHLCV, exiting")
+            print("[FATAL] Failed to fetch OHLCV, exiting")
             sys.exit(1)
 
-        # Step 2: Compute daily historical PE (from quarterly EPS)
+        # ── Step 2: Historical PE ──
+        print("\n[2/4] PE Ratio (Finnhub)")
         hist = self.fetch_historical_pe(hist)
 
-        # Step 3: News
-        news_df = self.fetch_news(start_date=news_start)
+        # ── Step 3: News (Alpaca + Finnhub combined) ──
+        print("\n[3/4] News (Alpaca + Finnhub)")
+        news_df = self.fetch_all_news(start_date=news_start)
+
         if news_df.empty:
-            print("[WARNING] No news data, saving OHLCV+PE only")
-            result = hist.copy()
-            result["Ticker"] = self.ticker
-            result["Publisher"] = ""
-            result["Headline"] = ""
-        else:
-            # Step 4: inner join (hist already contains PE_Ratio)
-            result = pd.merge(news_df, hist[["Date", "Close", "Volume", "PE_Ratio"]], on="Date", how="inner")
-            result["Ticker"] = self.ticker
+            print("[WARNING] No news data available")
+            hist["Ticker"] = self.ticker
+            market = hist[["Date", "Ticker", "Close", "Volume", "PE_Ratio"]].copy()
+            market = market.sort_values("Date", ascending=False)
+            market.to_csv(self.market_file, index=False)
+            print(f"\n[+] Market data saved: {self.market_file} ({len(market)} rows)")
+            print("[!] No news file generated (no news data)")
+            return market, pd.DataFrame()
 
-        # Standardize column order
-        result = result[["Date", "Ticker", "Close", "Volume", "PE_Ratio", "Publisher", "Headline"]]
-        result = result.sort_values("Date", ascending=False)
+        # ── Step 4: Date alignment (inner join) ──
+        print("\n[4/4] Date alignment & output")
 
-        # Step 5: Save
-        result.to_csv(self.cache_file, index=False)
-        print(f"\n[+] Dataset saved: {self.cache_file} ({len(result)} rows)")
-        print(f"    Date range: {result['Date'].min()} ~ {result['Date'].max()}")
+        market_dates = set(hist["Date"].unique())
+        news_dates = set(news_df["Date"].unique())
+        common_dates = market_dates & news_dates
 
-        return result
+        print(f"  Market trading days : {len(market_dates)}")
+        print(f"  News coverage days  : {len(news_dates)}")
+        print(f"  Aligned dates       : {len(common_dates)}")
+
+        # Filter both datasets to common dates only
+        market = hist[hist["Date"].isin(common_dates)].copy()
+        market["Ticker"] = self.ticker
+        market = market[["Date", "Ticker", "Close", "Volume", "PE_Ratio"]]
+        market = market.drop_duplicates(subset=["Date"]).sort_values("Date", ascending=False)
+
+        news = news_df[news_df["Date"].isin(common_dates)].copy()
+        news["Ticker"] = self.ticker
+        news = news[["Date", "Ticker", "Publisher", "Headline"]]
+        news = news.sort_values("Date", ascending=False).reset_index(drop=True)
+
+        # Save
+        market.to_csv(self.market_file, index=False)
+        news.to_csv(self.news_file, index=False)
+
+        print(f"\n  Market data : {self.market_file} ({len(market)} rows)")
+        print(f"  News data   : {self.news_file} ({len(news)} rows)")
+        print(f"  Date range  : {market['Date'].min()} ~ {market['Date'].max()}")
+
+        return market, news
 
     # ==========================================
     # 5. Incremental Update (last 7 days)
     # ==========================================
     def update(self):
-        """Incremental update: fetch last 7 days of OHLCV and news, append to existing cache"""
-        if not os.path.exists(self.cache_file):
-            print("[-] No local cache found, running full build...")
+        """Incremental update: fetch last 7 days, append to existing datasets"""
+        if not os.path.exists(self.market_file):
+            print("[-] No existing dataset found, running full build...")
             return self.build_dataset()
 
-        print(f"\n--- Incremental sync {self.ticker} (Alpaca + Finnhub) ---")
+        print(f"\n--- Incremental sync {self.ticker} ---")
 
         end = datetime.now().strftime("%Y-%m-%d")
         start = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
 
-        # Last 7 days OHLCV (Alpaca)
+        # ── Fetch last 7 days OHLCV ──
         try:
             request = StockBarsRequest(
                 symbol_or_symbols=self.ticker,
@@ -373,97 +480,139 @@ class AlpacaFinnhubPipeline:
             )
             bars = self.alpaca.get_stock_bars(request)
             bars_df = bars.df.reset_index()
-            hist = pd.DataFrame({
+            new_hist = pd.DataFrame({
                 "Date": pd.to_datetime(bars_df["timestamp"]).dt.strftime("%Y-%m-%d"),
                 "Close": bars_df["close"],
                 "Volume": bars_df["volume"],
             }).drop_duplicates(subset=["Date"])
         except Exception as e:
-            print(f"[-] Alpaca incremental OHLCV failed: {e}")
-            hist = pd.DataFrame()
+            print(f"  [error] Alpaca incremental OHLCV: {e}")
+            new_hist = pd.DataFrame()
 
-        # Last 7 days news (Alpaca)
+        # ── Fetch last 7 days news (both sources) ──
+        # Alpaca news (fresh, no cache)
+        alpaca_records = []
         news_url = "https://data.alpaca.markets/v1beta1/news"
         headers = {
             "APCA-API-KEY-ID": self.alpaca_key,
             "APCA-API-SECRET-KEY": self.alpaca_secret,
         }
-        params = {
-            "symbols": self.ticker,
-            "start": f"{start}T00:00:00Z",
-            "end": f"{end}T23:59:59Z",
-            "limit": 50,
-            "sort": "desc",
-        }
-        news_records = []
         try:
-            resp = requests.get(news_url, headers=headers, params=params, timeout=15)
+            resp = requests.get(news_url, headers=headers, params={
+                "symbols": self.ticker,
+                "start": f"{start}T00:00:00Z",
+                "end": f"{end}T23:59:59Z",
+                "limit": 50, "sort": "desc",
+            }, timeout=15)
             resp.raise_for_status()
             for a in resp.json().get("news", []):
-                news_records.append({
+                alpaca_records.append({
                     "Date": a.get("created_at", "")[:10],
                     "Publisher": a.get("source", "Unknown"),
                     "Headline": a.get("headline", ""),
                 })
         except Exception as e:
-            print(f"[-] Alpaca incremental news failed: {e}")
+            print(f"  [error] Alpaca incremental news: {e}")
 
-        news_df = pd.DataFrame(news_records) if news_records else pd.DataFrame()
+        # Finnhub news (last 7 days)
+        finnhub_records = []
+        try:
+            articles = self._finnhub_get(
+                "/company-news",
+                params={"symbol": self.ticker, "from": start, "to": end},
+                description=f"incremental news {start}~{end}"
+            )
+            if isinstance(articles, list):
+                for a in articles:
+                    dt = a.get("datetime")
+                    if dt:
+                        date_str = datetime.fromtimestamp(dt).strftime("%Y-%m-%d")
+                        headline = a.get("headline", "").strip()
+                        source = a.get("source", "Unknown").strip()
+                        if headline:
+                            finnhub_records.append({
+                                "Date": date_str,
+                                "Publisher": source,
+                                "Headline": headline,
+                            })
+        except Exception as e:
+            print(f"  [error] Finnhub incremental news: {e}")
 
-        if news_df.empty:
-            print("[-] No new news data")
-            return pd.read_csv(self.cache_file)
+        new_news = pd.DataFrame(alpaca_records + finnhub_records)
+        if not new_news.empty:
+            new_news = new_news.drop_duplicates(subset=["Date", "Headline"])
 
-        # PE: compute historical PE (same method for consistency)
-        if not hist.empty:
-            hist = self.fetch_historical_pe(hist)
+        if new_news.empty and new_hist.empty:
+            print("  No new data to add")
+            return pd.read_csv(self.market_file), pd.read_csv(self.news_file)
 
-        # Merge
-        if not hist.empty:
-            new_data = pd.merge(news_df, hist[["Date", "Close", "Volume", "PE_Ratio"]], on="Date", how="inner")
+        # ── PE for new hist rows ──
+        if not new_hist.empty:
+            new_hist = self.fetch_historical_pe(new_hist)
+
+        # ── Merge incremental data ──
+        old_market = pd.read_csv(self.market_file)
+        old_news = pd.read_csv(self.news_file)
+
+        if not new_hist.empty:
+            new_hist["Ticker"] = self.ticker
+            new_market_rows = new_hist[["Date", "Ticker", "Close", "Volume", "PE_Ratio"]]
+            combined_market = pd.concat([old_market, new_market_rows], ignore_index=True)
+            combined_market = combined_market.drop_duplicates(subset=["Date"])
         else:
-            new_data = news_df.copy()
-            new_data["Close"] = 0.0
-            new_data["Volume"] = 0
-            new_data["PE_Ratio"] = self.fetch_pe_ratio()  # fallback: snapshot
+            combined_market = old_market
 
-        new_data["Ticker"] = self.ticker
-        new_data = new_data[["Date", "Ticker", "Close", "Volume", "PE_Ratio", "Publisher", "Headline"]]
+        if not new_news.empty:
+            new_news["Ticker"] = self.ticker
+            new_news_rows = new_news[["Date", "Ticker", "Publisher", "Headline"]]
+            combined_news = pd.concat([old_news, new_news_rows], ignore_index=True)
+            combined_news = combined_news.drop_duplicates(subset=["Date", "Headline"])
+        else:
+            combined_news = old_news
 
-        # Append and deduplicate
-        old_data = pd.read_csv(self.cache_file)
-        combined = pd.concat([old_data, new_data], ignore_index=True)
-        combined = combined.drop_duplicates(subset=["Date", "Ticker", "Publisher", "Headline"])
-        combined.to_csv(self.cache_file, index=False)
-        print(f"[+] Incremental update complete, total dataset size: {len(combined)} rows")
-        return combined
+        # Re-align dates
+        common_dates = set(combined_market["Date"].unique()) & set(combined_news["Date"].unique())
+        combined_market = combined_market[combined_market["Date"].isin(common_dates)]
+        combined_news = combined_news[combined_news["Date"].isin(common_dates)]
 
+        combined_market = combined_market.sort_values("Date", ascending=False)
+        combined_news = combined_news.sort_values("Date", ascending=False)
 
-import argparse
+        combined_market.to_csv(self.market_file, index=False)
+        combined_news.to_csv(self.news_file, index=False)
 
-# ... (rest of the imports)
+        print(f"  [done] Market: {len(combined_market)} rows, News: {len(combined_news)} rows")
+        return combined_market, combined_news
+
 
 # ==========================================
 # Entry Point
 # ==========================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Alpaca + Finnhub Hybrid Data Pipeline")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Alpaca + Finnhub Hybrid Data Pipeline v2")
     parser.add_argument(
         "tickers",
         nargs="*",
-        help="Stock tickers to process (e.g., NVDA GOOGL). If omitted, you will be prompted.",
+        help="Stock tickers to process (e.g., NVDA GOOGL MSFT)",
+    )
+    parser.add_argument(
+        "--force-rebuild",
+        action="store_true",
+        help="Force full rebuild even if datasets already exist",
     )
     args = parser.parse_args()
 
-    # API Keys (Ideally these should be in environment variables)
+    # API Keys
     ALPACA_KEY    = "PK6FYKALELA4WL7K47AD2UC626"
     ALPACA_SECRET = "A5mWQGEDL2uwEtWGVkuRkVCAAnp1qGKnQJ5e5osoRQ64"
     FINNHUB_KEY   = "d6hksupr01qr5k4ccku0d6hksupr01qr5k4cckug"
 
-    # Determine tickers to process
+    # Determine tickers
     tickers = args.tickers
     if not tickers:
-        user_input = input("Enter ticker symbols separated by spaces (e.g., NVDA GOOGL): ").strip()
+        user_input = input("Enter ticker symbols separated by spaces (e.g., NVDA GOOGL MSFT): ").strip()
         if user_input:
             tickers = [t.strip().upper() for t in user_input.split()]
         else:
@@ -472,25 +621,25 @@ if __name__ == "__main__":
 
     for ticker in tickers:
         print(f"\n{'#'*60}")
-        print(f"  Processing Ticker: {ticker}")
+        print(f"  Processing: {ticker}")
         print(f"{'#'*60}")
 
-        cache_file = f"dataset/real_{ticker.lower()}_dataset.csv"
-        
         pipeline = AlpacaFinnhubPipeline(
             alpaca_key=ALPACA_KEY,
             alpaca_secret=ALPACA_SECRET,
             finnhub_key=FINNHUB_KEY,
             ticker=ticker,
-            cache_file=cache_file,
         )
 
-        # First run: build last 1 year dataset
-        # Subsequent runs: incremental update (last 7 days)
-        if os.path.exists(pipeline.cache_file):
-            df = pipeline.update()
+        if args.force_rebuild or not os.path.exists(pipeline.market_file):
+            market, news = pipeline.build_dataset()
         else:
-            df = pipeline.build_dataset()
+            market, news = pipeline.update()
 
-        print(f"\n--- Feature Matrix (Top 5 Rows for {ticker}) ---")
-        print(df.head(5).to_string(index=False))
+        print(f"\n--- {ticker} Market Data (Top 5) ---")
+        if isinstance(market, pd.DataFrame) and not market.empty:
+            print(market.head(5).to_string(index=False))
+
+        print(f"\n--- {ticker} News Data (Top 5) ---")
+        if isinstance(news, pd.DataFrame) and not news.empty:
+            print(news.head(5).to_string(index=False))
