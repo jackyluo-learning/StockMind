@@ -1,0 +1,47 @@
+ST545 POC v4 Step 3 Results: Media-Source Weighting
+====================================================
+Tickers: ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+Publishers: 9 unique (benzinga normalized)
+Articles: 46461
+Interaction features: 9 (Publisher × Sentiment)
+Total features: 21
+Validation: TimeSeriesSplit (last fold)
+
+Lasso Accuracy : 0.4355
+Lasso ROC-AUC  : 0.4837
+Lasso F1       : 0.6066
+Majority Acc   : 0.4355
+
+Sparsity: 19/21 features survived L1
+
+Top 20 Features by |Coefficient|:
+  pub_Fintel                                          -1.350217
+  pub_Fintel×Sentiment                                +0.386785
+  pub_Finnhub                                         +0.305226
+  pub_CNBC×Sentiment                                  +0.171643
+  pub_Yahoo×Sentiment                                 -0.090215
+  pub_MarketWatch×Sentiment                           -0.086926
+  pub_SeekingAlpha                                    +0.059316
+  pub_Benzinga×Sentiment                              -0.053356
+  pub_MarketWatch                                     -0.049164
+  pub_Yahoo                                           +0.043270
+  pub_Finnhub×Sentiment                               +0.043002
+  pub_Benzinga                                        -0.032307
+  pub_CNBC                                            +0.029035
+  pub_DowJones×Sentiment                              -0.025979
+  pub_SeekingAlpha×Sentiment                          -0.016572
+  Volume                                              -0.014232
+  pub_DowJones                                        -0.013982
+  PE_Ratio                                            -0.002786
+  Sentiment_Score                                     -0.000113
+
+Publisher Importance:
+  pub_Fintel                      0.386785
+  pub_CNBC                        0.171643
+  pub_Yahoo                       0.090215
+  pub_MarketWatch                 0.086926
+  pub_Benzinga                    0.053356
+  pub_Finnhub                     0.043002
+  pub_DowJones                    0.025979
+  pub_SeekingAlpha                0.016572
+  pub_ChartMill                   0.000000

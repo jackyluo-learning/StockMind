@@ -7,7 +7,7 @@ Data Sources:
 
 Output (split datasets, date-aligned):
  - {TICKER}_market.csv : Date, Ticker, Close, Volume, PE_Ratio
- - {TICKER}_news.csv   : Date, Ticker, Publisher, Headline
+ - {TICKER}_news.csv   : Date, Ticker, Publisher, Headline, Summary
 Both share the same date range (inner join on Date).
 """
 
@@ -194,7 +194,7 @@ class AlpacaFinnhubPipeline:
     def fetch_alpaca_news(self, start_date: str = None, end_date: str = None):
         """
         Fetch news via Alpaca v1beta1/news (Benzinga).
-        Returns DataFrame: Date, Publisher, Headline
+        Returns DataFrame: Date, Publisher, Headline, Summary
         """
         if os.path.exists(self.alpaca_news_cache):
             print(f"  [cache] Alpaca news: {self.alpaca_news_cache}")
@@ -250,6 +250,7 @@ class AlpacaFinnhubPipeline:
                         "Date": a.get("created_at", "")[:10],
                         "Publisher": a.get("source", "Unknown"),
                         "Headline": a.get("headline", ""),
+                        "Summary": a.get("summary", ""),
                     })
 
                 page_token = data.get("next_page_token")
@@ -266,7 +267,7 @@ class AlpacaFinnhubPipeline:
                 break
 
         if not all_news:
-            return pd.DataFrame(columns=["Date", "Publisher", "Headline"])
+            return pd.DataFrame(columns=["Date", "Publisher", "Headline", "Summary"])
 
         news_df = pd.DataFrame(all_news)
         news_df = news_df.drop_duplicates(subset=["Date", "Publisher", "Headline"])
@@ -333,6 +334,7 @@ class AlpacaFinnhubPipeline:
                                 "Date": date_str,
                                 "Publisher": source,
                                 "Headline": headline,
+                                "Summary": a.get("summary", "").strip(),
                             })
 
                 count = len(articles) if isinstance(articles, list) else 0
@@ -345,7 +347,7 @@ class AlpacaFinnhubPipeline:
             time.sleep(1)  # Finnhub free tier: 60 req/min
 
         if not all_news:
-            return pd.DataFrame(columns=["Date", "Publisher", "Headline"])
+            return pd.DataFrame(columns=["Date", "Publisher", "Headline", "Summary"])
 
         news_df = pd.DataFrame(all_news)
         news_df = news_df.drop_duplicates(subset=["Date", "Publisher", "Headline"])
@@ -387,7 +389,7 @@ class AlpacaFinnhubPipeline:
         """
         Build two date-aligned datasets:
          1. {TICKER}_market.csv : Date, Ticker, Close, Volume, PE_Ratio
-         2. {TICKER}_news.csv   : Date, Ticker, Publisher, Headline
+         2. {TICKER}_news.csv   : Date, Ticker, Publisher, Headline, Summary
 
         Both share the same set of dates (inner join).
         """
@@ -443,7 +445,7 @@ class AlpacaFinnhubPipeline:
 
         news = news_df[news_df["Date"].isin(common_dates)].copy()
         news["Ticker"] = self.ticker
-        news = news[["Date", "Ticker", "Publisher", "Headline"]]
+        news = news[["Date", "Ticker", "Publisher", "Headline", "Summary"]]
         news = news.sort_values("Date", ascending=False).reset_index(drop=True)
 
         # Save
@@ -510,6 +512,7 @@ class AlpacaFinnhubPipeline:
                     "Date": a.get("created_at", "")[:10],
                     "Publisher": a.get("source", "Unknown"),
                     "Headline": a.get("headline", ""),
+                    "Summary": a.get("summary", ""),
                 })
         except Exception as e:
             print(f"  [error] Alpaca incremental news: {e}")
@@ -534,6 +537,7 @@ class AlpacaFinnhubPipeline:
                                 "Date": date_str,
                                 "Publisher": source,
                                 "Headline": headline,
+                                "Summary": a.get("summary", "").strip(),
                             })
         except Exception as e:
             print(f"  [error] Finnhub incremental news: {e}")
@@ -564,7 +568,7 @@ class AlpacaFinnhubPipeline:
 
         if not new_news.empty:
             new_news["Ticker"] = self.ticker
-            new_news_rows = new_news[["Date", "Ticker", "Publisher", "Headline"]]
+            new_news_rows = new_news[["Date", "Ticker", "Publisher", "Headline", "Summary"]]
             combined_news = pd.concat([old_news, new_news_rows], ignore_index=True)
             combined_news = combined_news.drop_duplicates(subset=["Date", "Headline"])
         else:

@@ -1,0 +1,32 @@
+ST545 POC v3 Step 3 Results: Media-Source Weighting
+====================================================
+Data source: sentiment_cache.csv (pre-computed FinBERT)
+Publishers: 8 unique (benzinga normalized to Benzinga)
+Articles: 17184
+Interaction features: 8 (Publisher × Sentiment)
+Total features: 19
+Validation: TimeSeriesSplit (last fold)
+
+Lasso Accuracy : 0.4036
+Lasso ROC-AUC  : 0.4442
+Lasso F1       : 0.5751
+Majority Acc   : 0.4036
+
+Sparsity: 5/19 features survived L1
+
+Top 20 Features by |Coefficient|:
+  pub_Benzinga                                        -0.100307
+  PE_Ratio                                            -0.062682
+  Sentiment_Score                                     -0.029260
+  pub_Yahoo×Sentiment                                 -0.014277
+  Volume                                              +0.006762
+
+Publisher Importance (Mean |Coef| of interactions):
+  pub_Yahoo                       0.014277
+  pub_Benzinga                    0.000000
+  pub_CNBC                        0.000000
+  pub_ChartMill                   0.000000
+  pub_DowJones                    0.000000
+  pub_Finnhub                     0.000000
+  pub_MarketWatch                 0.000000
+  pub_SeekingAlpha                0.000000

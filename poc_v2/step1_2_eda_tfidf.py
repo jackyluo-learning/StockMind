@@ -1,12 +1,17 @@
 """
-ST545 POC v4 — Step 1 & 2: EDA + TF-IDF Baseline
+ST545 POC v2 — Step 1 & 2: EDA + TF-IDF Baseline
 ===================================================
-10 tickers: NVDA, GOOGL, MSFT, AMZN, TSLA, LMT, NEM, AAPL, META, JPM
-Publisher normalization (benzinga → Benzinga)
+Improvements over v1:
+ - Uses new split dataset format (_market.csv + _news.csv)
+ - Text = Headline + Summary (richer signal)
+ - TimeSeriesSplit instead of random split
+ - Includes naive baselines (random, majority vote)
+ - Covers all 3 tickers combined
 """
 
 import pandas as pd
 import numpy as np
+import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,7 +19,7 @@ import seaborn as sns
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score, f1_score
 from sklearn.preprocessing import StandardScaler
 import nltk
 from nltk.corpus import stopwords
@@ -26,45 +31,50 @@ try:
 except LookupError:
     nltk.download('stopwords', quiet=True)
 
-PUBLISHER_NORM = {'benzinga': 'Benzinga'}
-TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
-
-# ── 1. Load Data ──
+# ── 1. Load New Dataset Format ──
+TICKERS = ['NVDA', 'GOOGL', 'MSFT']
 all_daily = []
+
 for ticker in TICKERS:
     market = pd.read_csv(f"dataset/{ticker}_market.csv")
     news = pd.read_csv(f"dataset/{ticker}_news.csv")
+
     market['Date'] = pd.to_datetime(market['Date'])
     news['Date'] = pd.to_datetime(news['Date'])
-    news['Publisher'] = news['Publisher'].replace(PUBLISHER_NORM)
 
+    # Target: next-day price direction
     market = market.sort_values('Date')
     market['Next_Close'] = market['Close'].shift(-1)
     market['Price_Label'] = (market['Next_Close'] > market['Close']).astype(int)
     market = market.dropna(subset=['Price_Label'])
     market['Price_Label'] = market['Price_Label'].astype(int)
 
+    # Combine Headline + Summary for richer text
     news['Summary'] = news['Summary'].fillna('')
     news['Text'] = news['Headline'].str.strip() + '. ' + news['Summary'].str.strip()
     news['Text'] = news['Text'].str.strip('. ')
 
+    # Merge: each news row gets its day's market data + label
     merged = pd.merge(news, market[['Date', 'Ticker', 'Close', 'Volume', 'PE_Ratio', 'Price_Label']],
                        on=['Date', 'Ticker'], how='inner')
     all_daily.append(merged)
 
-df = pd.concat(all_daily, ignore_index=True).sort_values('Date').reset_index(drop=True)
-print(f"--- Data Loaded: {len(df)} rows, {df['Date'].nunique()} unique dates, {df['Ticker'].nunique()} tickers ---")
+df = pd.concat(all_daily, ignore_index=True)
+df = df.sort_values('Date').reset_index(drop=True)
+print(f"--- Data Loaded: {len(df)} rows, {df['Date'].nunique()} unique dates ---")
+print(f"--- Tickers: {df['Ticker'].unique()} ---")
 print(f"--- Label Balance: {df['Price_Label'].value_counts(normalize=True).to_dict()} ---")
 
 # ── 2. EDA: Publisher Distribution ──
 plt.figure(figsize=(12, 6))
 top_publishers = df['Publisher'].value_counts().head(15)
 sns.barplot(x=top_publishers.values, y=top_publishers.index, palette='viridis')
-plt.title('Top 15 News Publishers (10 Tickers, Normalized)')
+plt.title('Top 15 News Publishers (All Tickers)')
 plt.xlabel('Number of Articles')
 plt.tight_layout()
 plt.savefig('poc/result/publisher_distribution.png', dpi=150)
 plt.close()
+print(f"--- Publisher Distribution saved ---")
 
 # ── 3. Text Preprocessing ──
 ps = PorterStemmer()
@@ -78,7 +88,7 @@ def preprocess_text(text):
     text = [ps.stem(word) for word in text if word not in stop_words]
     return ' '.join(text)
 
-print("--- Preprocessing text... ---")
+print("--- Preprocessing text (Headline + Summary)... ---")
 df['Processed_Text'] = df['Text'].apply(preprocess_text)
 
 # ── 4. TF-IDF Features ──
@@ -95,15 +105,19 @@ print("--- Training with TimeSeriesSplit (5 folds)... ---")
 tscv = TimeSeriesSplit(n_splits=5)
 
 results = {'acc': [], 'auc': [], 'f1': []}
-baseline_results = {'majority_acc': []}
+baseline_results = {'majority_acc': [], 'random_auc': []}
 
 for fold, (train_idx, test_idx) in enumerate(tscv.split(X)):
     X_train, X_test = X[train_idx], X[test_idx]
     y_train, y_test = y[train_idx], y[test_idx]
 
+    # Baseline: majority vote
     majority_class = np.bincount(y_train).argmax()
-    baseline_results['majority_acc'].append(accuracy_score(y_test, np.full(len(y_test), majority_class)))
+    y_pred_majority = np.full(len(y_test), majority_class)
+    baseline_results['majority_acc'].append(accuracy_score(y_test, y_pred_majority))
+    baseline_results['random_auc'].append(0.5)
 
+    # TF-IDF + LogReg
     model = LogisticRegression(max_iter=1000, random_state=42)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
@@ -123,7 +137,7 @@ avg_f1 = np.mean(results['f1'])
 avg_majority = np.mean(baseline_results['majority_acc'])
 
 print(f"\n{'='*50}")
-print(f"  POC v4 Step 1 & 2 Results (TimeSeriesSplit)")
+print(f"  POC v2 Step 1 & 2 Results (TimeSeriesSplit)")
 print(f"{'='*50}")
 print(f"  TF-IDF + LogReg (5-fold avg):")
 print(f"    Accuracy : {avg_acc:.4f}")
@@ -131,14 +145,15 @@ print(f"    ROC-AUC  : {avg_auc:.4f}")
 print(f"    F1       : {avg_f1:.4f}")
 print(f"  Baselines:")
 print(f"    Majority Vote Acc : {avg_majority:.4f}")
-print(f"  Tickers: {len(TICKERS)}, Total articles: {len(df)}")
+print(f"    Random AUC        : 0.5000")
+print(f"  Text input: Headline + Summary")
+print(f"  Total articles: {len(df)}")
 
 with open('poc/result/eda_tfidf_results.txt', 'w') as f:
-    f.write("ST545 POC v4 Step 1 & 2 Results\n")
+    f.write("ST545 POC v2 Step 1 & 2 Results\n")
     f.write("================================\n")
     f.write(f"Dataset: {len(df)} articles, {df['Date'].nunique()} dates, {len(TICKERS)} tickers\n")
-    f.write(f"Tickers: {TICKERS}\n")
-    f.write(f"Publisher normalization: benzinga → Benzinga\n")
+    f.write(f"Text Input: Headline + Summary\n")
     f.write(f"Validation: TimeSeriesSplit (5 folds)\n")
     f.write(f"Label Balance (Up): {df['Price_Label'].mean():.2%}\n\n")
     f.write(f"TF-IDF + LogReg (5-fold avg):\n")
@@ -146,9 +161,10 @@ with open('poc/result/eda_tfidf_results.txt', 'w') as f:
     f.write(f"  ROC-AUC  : {avg_auc:.4f}\n")
     f.write(f"  F1       : {avg_f1:.4f}\n\n")
     f.write(f"Baselines:\n")
-    f.write(f"  Majority Vote Accuracy : {avg_majority:.4f}\n\n")
+    f.write(f"  Majority Vote Accuracy : {avg_majority:.4f}\n")
+    f.write(f"  Random AUC             : 0.5000\n\n")
     f.write(f"Per-fold results:\n")
     for i in range(5):
         f.write(f"  Fold {i+1}: Acc={results['acc'][i]:.4f}, AUC={results['auc'][i]:.4f}, F1={results['f1'][i]:.4f}\n")
 
-print("\n[+] POC v4 Step 1 & 2 complete. Results in poc/result/")
+print("\n[+] POC v2 Step 1 & 2 complete. Results in poc/result/")

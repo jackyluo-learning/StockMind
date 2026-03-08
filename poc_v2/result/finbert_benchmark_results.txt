@@ -1,0 +1,21 @@
+ST545 POC v2 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)
+=================================================================
+Dataset: 5000 articles
+Text Input: Headline + Summary
+Validation: TimeSeriesSplit (5 folds)
+Classifier: LogisticRegression (same for all)
+
+Method                                        Acc      AUC       F1
+--------------------------------------------------------------------
+TF-IDF (500-dim)                           0.4970   0.5107   0.4787
+FinBERT Embedding (768-dim)                0.4903   0.5000   0.4623
+FinBERT 3-class (3-dim, v1 style)          0.4876   0.5056   0.5139
+Majority Vote Baseline                     0.5085      N/A      N/A
+Random Baseline                               N/A   0.5000      N/A
+
+Key Insight:
+  v1 compared TF-IDF (500-dim) vs FinBERT (3-dim softmax) —
+  an unfair comparison due to dimensionality mismatch.
+  v2 uses FinBERT's 768-dim [CLS] embedding, giving a
+  fair apples-to-apples comparison of text representations.
+  The 3-class result is kept for backward reference.

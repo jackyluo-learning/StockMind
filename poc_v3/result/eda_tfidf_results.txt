@@ -1,0 +1,23 @@
+ST545 POC v3 Step 1 & 2 Results
+================================
+Dataset: 17184 articles, 246 dates, 3 tickers
+Text Input: Headline + Summary
+Validation: TimeSeriesSplit (5 folds)
+Publishers: 8 (benzinga normalized to Benzinga)
+Label Balance (Up): 51.91%
+
+TF-IDF + LogReg (5-fold avg):
+  Accuracy : 0.5047
+  ROC-AUC  : 0.4967
+  F1       : 0.5830
+
+Baselines:
+  Majority Vote Accuracy : 0.5160
+  Random AUC             : 0.5000
+
+Per-fold results:
+  Fold 1: Acc=0.5346, AUC=0.5195, F1=0.6135
+  Fold 2: Acc=0.5196, AUC=0.4742, F1=0.6477
+  Fold 3: Acc=0.4679, AUC=0.4806, F1=0.5520
+  Fold 4: Acc=0.5272, AUC=0.5208, F1=0.5931
+  Fold 5: Acc=0.4745, AUC=0.4885, F1=0.5087

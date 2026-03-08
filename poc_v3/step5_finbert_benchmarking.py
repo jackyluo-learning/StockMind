@@ -1,11 +1,11 @@
 """
-ST545 POC v4 — Step 5: FinBERT vs TF-IDF Fair Benchmarking
+ST545 POC v3 — Step 5: FinBERT vs TF-IDF Fair Benchmarking
 ============================================================
-Same LogReg classifier on 3 text representations:
-  1. TF-IDF (500-dim)
-  2. FinBERT CLS embedding (768-dim)
-  3. FinBERT 3-class softmax (3-dim, POC v1 style)
-10 tickers, publisher normalization.
+Changes from v2:
+ - Publisher normalization
+ - Output paths to poc/result/
+ (FinBERT embedding + classification still computed here since step5
+  needs 768-dim embeddings, not just sentiment scores)
 """
 
 import pandas as pd
@@ -34,7 +34,7 @@ except LookupError:
 PUBLISHER_NORM = {'benzinga': 'Benzinga'}
 
 # ── 1. Load Data ──
-TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+TICKERS = ['NVDA', 'GOOGL', 'MSFT']
 all_data = []
 
 for ticker in TICKERS:
@@ -59,8 +59,8 @@ for ticker in TICKERS:
 
 df = pd.concat(all_data, ignore_index=True).sort_values('Date').reset_index(drop=True)
 
-# Sample for tractability (FinBERT 768-dim embeddings on ~46K texts is very slow)
-MAX_SAMPLES = 8000
+# Sample for tractability (FinBERT 768-dim embeddings on ~17K texts is slow)
+MAX_SAMPLES = 5000
 if len(df) > MAX_SAMPLES:
     df = df.tail(MAX_SAMPLES).reset_index(drop=True)
     print(f"--- Using last {MAX_SAMPLES} articles for benchmarking ---")
@@ -204,9 +204,8 @@ print("\n--- Comparison chart saved ---")
 
 # ── 7. Save Results ──
 with open('poc/result/finbert_benchmark_results.txt', 'w') as f:
-    f.write("ST545 POC v4 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)\n")
+    f.write("ST545 POC v3 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)\n")
     f.write("=================================================================\n")
-    f.write(f"Tickers: {TICKERS}\n")
     f.write(f"Dataset: {len(df)} articles (last {MAX_SAMPLES})\n")
     f.write(f"Text Input: Headline + Summary\n")
     f.write(f"Publisher normalization: benzinga → Benzinga\n")
@@ -219,4 +218,4 @@ with open('poc/result/finbert_benchmark_results.txt', 'w') as f:
     f.write(f"{'Majority Vote Baseline':<40} {majority_avg:>8.4f} {'N/A':>8} {'N/A':>8}\n")
     f.write(f"{'Random Baseline':<40} {'N/A':>8} {'0.5000':>8} {'N/A':>8}\n")
 
-print("\n[+] POC v4 Step 5 complete. Results in poc/result/")
+print("\n[+] POC v3 Step 5 complete. Results in poc/result/")

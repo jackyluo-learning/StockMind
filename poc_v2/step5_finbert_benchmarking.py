@@ -1,11 +1,12 @@
 """
-ST545 POC v4 — Step 5: FinBERT vs TF-IDF Fair Benchmarking
+ST545 POC v2 — Step 5: FinBERT vs TF-IDF Fair Benchmarking
 ============================================================
-Same LogReg classifier on 3 text representations:
-  1. TF-IDF (500-dim)
-  2. FinBERT CLS embedding (768-dim)
-  3. FinBERT 3-class softmax (3-dim, POC v1 style)
-10 tickers, publisher normalization.
+Improvements over v1:
+ - FinBERT 768-dim embedding (last_hidden_state [CLS]) instead of 3-class probs
+ - Both TF-IDF and FinBERT fed to same LogisticRegression → fair comparison
+ - Text = Headline + Summary
+ - TimeSeriesSplit
+ - Includes naive baselines
 """
 
 import pandas as pd
@@ -31,10 +32,8 @@ try:
 except LookupError:
     nltk.download('stopwords', quiet=True)
 
-PUBLISHER_NORM = {'benzinga': 'Benzinga'}
-
 # ── 1. Load Data ──
-TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+TICKERS = ['NVDA', 'GOOGL', 'MSFT']
 all_data = []
 
 for ticker in TICKERS:
@@ -42,8 +41,6 @@ for ticker in TICKERS:
     news = pd.read_csv(f"dataset/{ticker}_news.csv")
     market['Date'] = pd.to_datetime(market['Date'])
     news['Date'] = pd.to_datetime(news['Date'])
-
-    news['Publisher'] = news['Publisher'].replace(PUBLISHER_NORM)
 
     market = market.sort_values('Date')
     market['Next_Close'] = market['Close'].shift(-1)
@@ -59,9 +56,11 @@ for ticker in TICKERS:
 
 df = pd.concat(all_data, ignore_index=True).sort_values('Date').reset_index(drop=True)
 
-# Sample for tractability (FinBERT 768-dim embeddings on ~46K texts is very slow)
-MAX_SAMPLES = 8000
+# Sample for tractability (FinBERT embeddings on ~17K texts is slow)
+MAX_SAMPLES = 5000
 if len(df) > MAX_SAMPLES:
+    np.random.seed(42)
+    # Preserve temporal order: take last N rows (most recent)
     df = df.tail(MAX_SAMPLES).reset_index(drop=True)
     print(f"--- Using last {MAX_SAMPLES} articles for benchmarking ---")
 
@@ -87,13 +86,14 @@ tfidf = TfidfVectorizer(max_features=500)
 X_tfidf = tfidf.fit_transform(processed).toarray()
 print(f"  TF-IDF shape: {X_tfidf.shape}")
 
-# ── 3. FinBERT 768-dim Embedding ──
+# ── 3. FinBERT 768-dim Embedding (CLS token) ──
 print("--- Extracting FinBERT 768-dim embeddings ([CLS] token)... ---")
 tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
 bert_model = AutoModel.from_pretrained("ProsusAI/finbert")
 bert_model.eval()
 
 def get_finbert_embeddings(texts, batch_size=64):
+    """Extract [CLS] token embedding (768-dim) from FinBERT last_hidden_state."""
     embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
@@ -101,6 +101,7 @@ def get_finbert_embeddings(texts, batch_size=64):
                           truncation=True, max_length=128)
         with torch.no_grad():
             outputs = bert_model(**inputs)
+        # [CLS] token embedding = first token of last hidden state
         cls_emb = outputs.last_hidden_state[:, 0, :].numpy()
         embeddings.append(cls_emb)
         if (i // batch_size) % 10 == 0:
@@ -110,8 +111,8 @@ def get_finbert_embeddings(texts, batch_size=64):
 X_finbert = get_finbert_embeddings(texts)
 print(f"  FinBERT embedding shape: {X_finbert.shape}")
 
-# ── 4. FinBERT 3-class softmax ──
-print("--- Getting FinBERT 3-class probs... ---")
+# ── 4. Also get FinBERT 3-class softmax (for comparison with v1) ──
+print("--- Getting FinBERT 3-class probs (for backward comparison)... ---")
 cls_model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
 cls_model.eval()
 
@@ -182,6 +183,7 @@ aucs = [all_results[m]['auc'] for m in all_results] + [0.5]
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
+# Accuracy comparison
 colors = ['steelblue', 'darkorange', 'gray', 'lightgray']
 axes[0].barh(methods, accs, color=colors)
 axes[0].set_xlabel('Accuracy')
@@ -190,6 +192,7 @@ axes[0].axvline(x=majority_avg, color='red', linestyle='--', alpha=0.7, label='M
 for i, v in enumerate(accs):
     axes[0].text(v + 0.005, i, f'{v:.4f}', va='center')
 
+# AUC comparison
 axes[1].barh(methods, aucs, color=colors)
 axes[1].set_xlabel('ROC-AUC')
 axes[1].set_title('ROC-AUC Comparison (TimeSeriesSplit 5-fold avg)')
@@ -204,12 +207,10 @@ print("\n--- Comparison chart saved ---")
 
 # ── 7. Save Results ──
 with open('poc/result/finbert_benchmark_results.txt', 'w') as f:
-    f.write("ST545 POC v4 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)\n")
+    f.write("ST545 POC v2 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)\n")
     f.write("=================================================================\n")
-    f.write(f"Tickers: {TICKERS}\n")
-    f.write(f"Dataset: {len(df)} articles (last {MAX_SAMPLES})\n")
+    f.write(f"Dataset: {len(df)} articles\n")
     f.write(f"Text Input: Headline + Summary\n")
-    f.write(f"Publisher normalization: benzinga → Benzinga\n")
     f.write(f"Validation: TimeSeriesSplit (5 folds)\n")
     f.write(f"Classifier: LogisticRegression (same for all)\n\n")
     f.write(f"{'Method':<40} {'Acc':>8} {'AUC':>8} {'F1':>8}\n")
@@ -218,5 +219,12 @@ with open('poc/result/finbert_benchmark_results.txt', 'w') as f:
         f.write(f"{name:<40} {res['acc']:>8.4f} {res['auc']:>8.4f} {res['f1']:>8.4f}\n")
     f.write(f"{'Majority Vote Baseline':<40} {majority_avg:>8.4f} {'N/A':>8} {'N/A':>8}\n")
     f.write(f"{'Random Baseline':<40} {'N/A':>8} {'0.5000':>8} {'N/A':>8}\n")
+    f.write("\n")
+    f.write("Key Insight:\n")
+    f.write("  v1 compared TF-IDF (500-dim) vs FinBERT (3-dim softmax) —\n")
+    f.write("  an unfair comparison due to dimensionality mismatch.\n")
+    f.write("  v2 uses FinBERT's 768-dim [CLS] embedding, giving a\n")
+    f.write("  fair apples-to-apples comparison of text representations.\n")
+    f.write("  The 3-class result is kept for backward reference.\n")
 
-print("\n[+] POC v4 Step 5 complete. Results in poc/result/")
+print("\n[+] POC v2 Step 5 complete. Results in poc/result/")

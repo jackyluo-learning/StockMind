@@ -1,6 +1,5 @@
 # Large dataset and feature matrix files
-real_*_dataset.csv
-dataset/*.csv
+*.csv
 
 # Python/Environment
 __pycache__/

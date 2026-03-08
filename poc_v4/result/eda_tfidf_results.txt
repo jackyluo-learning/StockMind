@@ -1,0 +1,22 @@
+ST545 POC v4 Step 1 & 2 Results
+================================
+Dataset: 46461 articles, 251 dates, 10 tickers
+Tickers: ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+Publisher normalization: benzinga → Benzinga
+Validation: TimeSeriesSplit (5 folds)
+Label Balance (Up): 52.05%
+
+TF-IDF + LogReg (5-fold avg):
+  Accuracy : 0.5002
+  ROC-AUC  : 0.4956
+  F1       : 0.5679
+
+Baselines:
+  Majority Vote Accuracy : 0.5245
+
+Per-fold results:
+  Fold 1: Acc=0.4957, AUC=0.4835, F1=0.5519
+  Fold 2: Acc=0.5201, AUC=0.5000, F1=0.6199
+  Fold 3: Acc=0.4940, AUC=0.4882, F1=0.5727
+  Fold 4: Acc=0.5169, AUC=0.5110, F1=0.5835
+  Fold 5: Acc=0.4744, AUC=0.4952, F1=0.5116

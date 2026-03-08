@@ -1,0 +1,42 @@
+ST545 POC v2 Step 3 Results: Media-Source Weighting
+====================================================
+Publishers: 9 unique
+Interaction features: 9 (Publisher × Sentiment)
+Total features: 21
+Validation: TimeSeriesSplit (last fold)
+
+Lasso Accuracy : 0.4078
+Lasso ROC-AUC  : 0.4386
+Lasso F1       : 0.5760
+Majority Acc   : 0.4036
+
+Sparsity: 16/21 features survived L1
+
+Top 20 Features by |Coefficient|:
+  pub_Benzinga×Sentiment                              +0.478729
+  pub_Benzinga                                        -0.369322
+  pub_DowJones×Sentiment                              -0.256095
+  pub_MarketWatch×Sentiment                           -0.240598
+  pub_DowJones                                        +0.164488
+  pub_benzinga                                        -0.097993
+  PE_Ratio                                            -0.072218
+  pub_Yahoo×Sentiment                                 -0.071177
+  pub_MarketWatch                                     +0.052964
+  pub_CNBC                                            -0.051606
+  pub_Yahoo                                           +0.039994
+  Sentiment_Score                                     -0.028564
+  pub_Finnhub×Sentiment                               +0.024699
+  Volume                                              +0.017886
+  pub_Finnhub                                         +0.002201
+  pub_SeekingAlpha                                    -0.000749
+
+Publisher Importance (Mean |Coef| of interactions):
+  pub_Benzinga                    0.478729
+  pub_DowJones                    0.256095
+  pub_MarketWatch                 0.240598
+  pub_Yahoo                       0.071177
+  pub_Finnhub                     0.024699
+  pub_CNBC                        0.000000
+  pub_ChartMill                   0.000000
+  pub_SeekingAlpha                0.000000
+  pub_benzinga                    0.000000

@@ -1,12 +1,16 @@
 """
-ST545 POC v4 — Step 3: Media-Source Weighting (Lasso / L1)
+ST545 POC v3 — Step 3: Media-Source Weighting (Lasso / L1)
 ==========================================================
-Article-level: discovers per-publisher sentiment differences.
-Loads sentiment from step0 cache. 10 tickers.
+Changes from v2:
+ - Loads sentiment from step0 cache (no duplicate FinBERT run)
+ - Publisher names pre-normalized (benzinga → Benzinga → 8 publishers)
+ - Still article-level: goal is to discover per-publisher sentiment differences
+ - Interaction: Publisher × Sentiment_Score
 """
 
 import pandas as pd
 import numpy as np
+import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,10 +20,10 @@ from sklearn.linear_model import LogisticRegressionCV
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
 from sklearn.preprocessing import StandardScaler
 
-TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+# ── 1. Load sentiment cache + market data ──
+TICKERS = ['NVDA', 'GOOGL', 'MSFT']
 CACHE_PATH = 'dataset/sentiment_cache.csv'
 
-# ── 1. Load sentiment cache + market data ──
 cache = pd.read_csv(CACHE_PATH)
 cache['Date'] = pd.to_datetime(cache['Date'])
 print(f"--- Loaded sentiment cache: {len(cache)} articles ---")
@@ -40,10 +44,10 @@ for ticker in TICKERS:
     all_data.append(merged)
 
 df = pd.concat(all_data, ignore_index=True).sort_values('Date').reset_index(drop=True)
-print(f"--- Merged: {len(df)} articles from {df['Publisher'].nunique()} publishers, {df['Ticker'].nunique()} tickers ---")
+print(f"--- Merged: {len(df)} articles from {df['Publisher'].nunique()} publishers ---")
 print(f"--- Publisher counts:\n{df['Publisher'].value_counts().to_string()}\n")
 
-# ── 2. Publisher One-Hot ──
+# ── 2. Publisher One-Hot (all publishers, no grouping) ──
 publisher_dummies = pd.get_dummies(df['Publisher'], prefix='pub')
 publisher_names = publisher_dummies.columns.tolist()
 X_publisher = publisher_dummies.values
@@ -51,20 +55,24 @@ print(f"--- Publishers ({len(publisher_names)}): {publisher_names} ---")
 
 # ── 3. Interaction: Publisher × Sentiment_Score ──
 sentiment = df['Sentiment_Score'].values.reshape(-1, 1)
-X_interaction = X_publisher * sentiment
+X_interaction = X_publisher * sentiment  # (N, n_pub) * (N, 1)
 interaction_names = [f"{p}×Sentiment" for p in publisher_names]
+print(f"--- Interaction features: {len(interaction_names)} (1 per publisher) ---")
 
-# ── 4. Combine features ──
+# ── 4. Combine all features ──
 scaler = StandardScaler()
 X_numeric = scaler.fit_transform(df[['PE_Ratio', 'Volume']])
-X = np.hstack((X_publisher, sentiment, X_interaction, X_numeric))
+X_sentiment = sentiment
+X = np.hstack((X_publisher, X_sentiment, X_interaction, X_numeric))
 y = df['Price_Label'].values
+
 feature_names = publisher_names + ['Sentiment_Score'] + interaction_names + ['PE_Ratio', 'Volume']
 print(f"--- Total features: {X.shape[1]} ---")
 
 # ── 5. Lasso (L1) with TimeSeriesSplit ──
 print("\n--- Training LassoCV with TimeSeriesSplit... ---")
 tscv = TimeSeriesSplit(n_splits=5)
+
 train_idx, test_idx = list(tscv.split(X))[-1]
 X_train, X_test = X[train_idx], X[test_idx]
 y_train, y_test = y[train_idx], y[test_idx]
@@ -91,7 +99,8 @@ print(f"  Majority Acc   : {majority_acc:.4f}")
 
 # ── 6. Coefficient Analysis ──
 coefs = lasso_model.coef_[0]
-n_nonzero = (coefs != 0).sum()
+nonzero_mask = coefs != 0
+n_nonzero = nonzero_mask.sum()
 print(f"\n--- Sparsity: {n_nonzero}/{len(coefs)} features survived L1 ({n_nonzero/len(coefs)*100:.1f}%) ---")
 
 coef_df = pd.DataFrame({'Feature': feature_names, 'Coefficient': coefs})
@@ -106,45 +115,48 @@ colors = ['green' if c > 0 else 'red' for c in top_features['Coefficient']]
 plt.barh(range(top_n), top_features['Coefficient'].values, color=colors)
 plt.yticks(range(top_n), top_features['Feature'].values, fontsize=8)
 plt.xlabel('Lasso Coefficient')
-plt.title(f'Top {top_n} Non-Zero Lasso Coefficients\n(10 Tickers, Publisher × Sentiment)')
+plt.title(f'Top {top_n} Non-Zero Lasso Coefficients\n(Publisher × Sentiment Interactions, Normalized Publishers)')
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig('poc/result/lasso_coefficients.png', dpi=150)
 plt.close()
 
-# ── 7. Publisher Importance ──
+# ── 7. Publisher-Level Summary ──
 pub_importance = {}
 for pname in publisher_names:
     mask = coef_df['Feature'].str.startswith(pname + '×')
-    pub_importance[pname] = coef_df.loc[mask, 'AbsCoef'].mean() if mask.sum() > 0 else 0.0
+    if mask.sum() > 0:
+        pub_importance[pname] = coef_df.loc[mask, 'AbsCoef'].mean()
+    else:
+        pub_importance[pname] = 0.0
 
 pub_imp_df = pd.DataFrame.from_dict(pub_importance, orient='index', columns=['Mean_AbsCoef'])
 pub_imp_df = pub_imp_df.sort_values('Mean_AbsCoef', ascending=False)
 
 plt.figure(figsize=(10, 6))
 sns.barplot(x=pub_imp_df['Mean_AbsCoef'], y=pub_imp_df.index, palette='coolwarm')
-plt.title('Publisher Importance (10 Tickers)')
+plt.title('Publisher Importance (Mean |Coefficient| of Interaction Terms)')
 plt.xlabel('Mean |Coefficient|')
 plt.tight_layout()
 plt.savefig('poc/result/publisher_importance.png', dpi=150)
 plt.close()
 
-# ── 8. Sentiment by Publisher ──
+# ── 8. Per-Publisher Sentiment Distribution ──
 plt.figure(figsize=(12, 6))
 pub_order = df['Publisher'].value_counts().index.tolist()
 sns.boxplot(data=df, x='Publisher', y='Sentiment_Score', order=pub_order)
 plt.xticks(rotation=45, ha='right')
-plt.title('FinBERT Sentiment Distribution by Publisher (10 Tickers)')
+plt.title('FinBERT Sentiment Distribution by Publisher (Normalized)')
 plt.tight_layout()
 plt.savefig('poc/result/sentiment_by_publisher.png', dpi=150)
 plt.close()
 
 # ── 9. Save Results ──
 with open('poc/result/media_weighting_results.txt', 'w') as f:
-    f.write("ST545 POC v4 Step 3 Results: Media-Source Weighting\n")
+    f.write("ST545 POC v3 Step 3 Results: Media-Source Weighting\n")
     f.write("====================================================\n")
-    f.write(f"Tickers: {TICKERS}\n")
-    f.write(f"Publishers: {df['Publisher'].nunique()} unique (benzinga normalized)\n")
+    f.write(f"Data source: sentiment_cache.csv (pre-computed FinBERT)\n")
+    f.write(f"Publishers: {df['Publisher'].nunique()} unique (benzinga normalized to Benzinga)\n")
     f.write(f"Articles: {len(df)}\n")
     f.write(f"Interaction features: {len(interaction_names)} (Publisher × Sentiment)\n")
     f.write(f"Total features: {X.shape[1]}\n")
@@ -157,8 +169,8 @@ with open('poc/result/media_weighting_results.txt', 'w') as f:
     f.write(f"Top 20 Features by |Coefficient|:\n")
     for _, row in top_features.head(20).iterrows():
         f.write(f"  {row['Feature']:50s}  {row['Coefficient']:+.6f}\n")
-    f.write(f"\nPublisher Importance:\n")
+    f.write(f"\nPublisher Importance (Mean |Coef| of interactions):\n")
     for pub, row in pub_imp_df.iterrows():
         f.write(f"  {pub:30s}  {row['Mean_AbsCoef']:.6f}\n")
 
-print("\n[+] POC v4 Step 3 complete. Results in poc/result/")
+print("\n[+] POC v3 Step 3 complete. Results in poc/result/")
