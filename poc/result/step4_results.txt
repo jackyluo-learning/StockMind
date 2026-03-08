@@ -1,62 +1,15 @@
-ST545 POC v5 Step 4 Results
-============================================================
-Tickers: ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
-Dataset: 2390 daily-level samples, 10 tickers
-Date range: 2025-03-20 to 2026-03-06
-Features: 22
-Validation: TimeSeriesSplit (5 outer folds, 3 inner folds for tuning)
+ST545 POC v9 Step 4 - NLP Representation Comparison (XGBoost)
+======================================================================
+Ticker  FinBERT_XGB_AUC  TF-IDF_XGB_AUC     Delta
+  NVDA         0.500759        0.474890  0.025869
+ GOOGL         0.461574        0.539398 -0.077825
+  MSFT         0.398265        0.394402  0.003863
+  AMZN         0.544858        0.422713  0.122144
+  TSLA         0.439416        0.481760 -0.042344
+   LMT         0.599566        0.626832 -0.027266
+   NEM         0.536017        0.508133  0.027884
+  AAPL         0.543226        0.564501 -0.021275
+  META         0.568928        0.482155  0.086772
+   JPM         0.481515        0.418027  0.063488
 
---- Hyperparameter Tuning Results ---
-XGBoost best params: {'learning_rate': 0.1, 'max_depth': 4, 'min_child_weight': 10, 'n_estimators': 200}
-XGBoost best inner CV AUC: 0.5311
-MLP best params: {'alpha': 0.1, 'hidden_layer_sizes': (64, 32), 'learning_rate_init': 0.001}
-MLP best inner CV AUC: 0.5410
-
---- Model Comparison (outer 5-fold) ---
-Model                     Acc      AUC       F1
-------------------------------------------------
-LogReg                 0.5246   0.5072   0.6573
-XGBoost (tuned)        0.5206   0.5232   0.5797
-RandomForest           0.5357   0.4987   0.6749
-MLP (tuned)            0.5221   0.5261   0.5981
-Majority Vote          0.5392
-
---- Per-fold results ---
-  Fold 1: LogReg Acc=0.5452 AUC=0.4957 | XGBoost (tuned) Acc=0.5251 AUC=0.4928 | RandomForest Acc=0.5327 AUC=0.4480 | MLP (tuned) Acc=0.5201 AUC=0.5031 | Majority=0.5729
-  Fold 2: LogReg Acc=0.5352 AUC=0.5226 | XGBoost (tuned) Acc=0.5025 AUC=0.5204 | RandomForest Acc=0.5603 AUC=0.5428 | MLP (tuned) Acc=0.5352 AUC=0.5511 | Majority=0.5477
-  Fold 3: LogReg Acc=0.5528 AUC=0.5011 | XGBoost (tuned) Acc=0.5101 AUC=0.5188 | RandomForest Acc=0.5578 AUC=0.4771 | MLP (tuned) Acc=0.5201 AUC=0.5285 | Majority=0.5603
-  Fold 4: LogReg Acc=0.5050 AUC=0.5122 | XGBoost (tuned) Acc=0.5377 AUC=0.5483 | RandomForest Acc=0.5327 AUC=0.5130 | MLP (tuned) Acc=0.5075 AUC=0.5142 | Majority=0.5226
-  Fold 5: LogReg Acc=0.4849 AUC=0.5041 | XGBoost (tuned) Acc=0.5276 AUC=0.5358 | RandomForest Acc=0.4950 AUC=0.5127 | MLP (tuned) Acc=0.5276 AUC=0.5334 | Majority=0.4925
-
---- Feature group importance (tuned XGBoost SHAP) ---
-  Sentiment: 1.0904 (49.7%)
-  Market:    1.1032 (50.3%)
-
---- Top SHAP features ---
-  ma10_ratio                      0.232302
-  sent_max                        0.183674
-  ma5_ratio                       0.161155
-  news_count                      0.149046
-  volatility_5d                   0.147890
-  sent_std                        0.143210
-  sent_mean                       0.136161
-  volume_pct_chg                  0.134584
-  pe_chg                          0.114905
-  sent_min                        0.113009
-  pub_Yahoo_sent                  0.112018
-  PE_Ratio                        0.106739
-  momentum_5d                     0.104181
-  Volume                          0.101487
-  pub_Benzinga_sent               0.087349
-  pub_Finnhub_sent                0.055739
-  pub_SeekingAlpha_sent           0.043674
-  pub_MarketWatch_sent            0.042428
-  pub_CNBC_sent                   0.016499
-  pub_DowJones_sent               0.007638
-  pub_Fintel_sent                 0.000000
-  pub_ChartMill_sent              0.000000
-
---- MLP details ---
-  Architecture: (64, 32)
-  Converged in: 23 iterations
-  Final loss: 0.667770
+Mean FinBERT Advantage: +0.0161

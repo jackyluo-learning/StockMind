@@ -1,0 +1,51 @@
+ST545 POC v7 Step 4 Results
+============================================================
+Tickers: ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+Sector Split: Growth=['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'AAPL', 'META'], Defensive=['LMT', 'NEM', 'JPM']
+Features: 29 (including Sector_Driver and Sentiment Lags)
+Validation: TimeSeriesSplit (5 outer folds, 3 inner folds)
+Changes: Removed Calibration and scale_pos_weight
+
+--- Hyperparameter Tuning Results ---
+XGBoost best params: {'learning_rate': 0.1, 'max_depth': 4, 'min_child_weight': 10, 'n_estimators': 200}
+MLP best params: {'alpha': 0.01, 'hidden_layer_sizes': (32,), 'learning_rate_init': 0.01}
+
+--- Model Comparison (outer 5-fold, Direct) ---
+Model                     Acc      AUC       F1
+------------------------------------------------
+LogReg                 0.5181   0.4937   0.6483
+XGBoost (tuned)        0.5101   0.5020   0.5713
+RandomForest           0.5231   0.4957   0.6658
+MLP (tuned)            0.4844   0.4873   0.5639
+Majority Vote          0.5392
+
+--- Top SHAP features ---
+  ma10_ratio                      0.228206
+  ma5_ratio                       0.164220
+  sent_max                        0.155012
+  volatility_5d                   0.130575
+  sent_mean                       0.127480
+  PE_Ratio                        0.118503
+  news_count_lag2                 0.115371
+  volume_pct_chg                  0.110767
+  sent_std                        0.109847
+  news_count                      0.105286
+  Volume                          0.104473
+  pe_chg                          0.103222
+  sent_mean_lag3                  0.102506
+  sent_min                        0.094366
+  pub_Yahoo_sent                  0.084947
+  momentum_5d                     0.082481
+  sent_mean_lag1                  0.079103
+  sent_mean_lag2                  0.075277
+  pub_Benzinga_sent               0.070931
+  news_count_lag3                 0.066884
+  news_count_lag1                 0.060338
+  pub_Finnhub_sent                0.041447
+  pub_SeekingAlpha_sent           0.033757
+  pub_MarketWatch_sent            0.030387
+  pub_CNBC_sent                   0.005180
+  pub_DowJones_sent               0.002930
+  pub_ChartMill_sent              0.000000
+  Sector_Driver                   0.000000
+  pub_Fintel_sent                 0.000000

@@ -1,43 +1,13 @@
-======================================================================
-Q1: RandomForest vs XGBoost vs LogReg (10 tickers, all features)
-======================================================================
-Dataset: 2390 rows, 22 features
+ST545 POC v9 Ablation Report (Ticker: LMT)
+==================================================
 
-  LogReg                Acc=0.5246  AUC=0.5072  Majority=0.5392  per-fold AUC=[0.496, 0.523, 0.501, 0.512, 0.504]
-  XGBoost               Acc=0.5131  AUC=0.4994  Majority=0.5392  per-fold AUC=[0.452, 0.525, 0.484, 0.517, 0.518]
-  RandomForest-100      Acc=0.5256  AUC=0.4974  Majority=0.5392  per-fold AUC=[0.445, 0.520, 0.473, 0.524, 0.524]
-  RandomForest-200      Acc=0.5357  AUC=0.4987  Majority=0.5392  per-fold AUC=[0.448, 0.543, 0.477, 0.513, 0.513]
-  RandomForest-500      Acc=0.5397  AUC=0.4972  Majority=0.5392  per-fold AUC=[0.453, 0.542, 0.475, 0.508, 0.508]
+EXP 1: Model Comparison (Combined Features)
+  lr      : AUC=0.5621
+  xgb     : AUC=0.5704
+  rf      : AUC=0.5440
+  mlp     : AUC=0.5437
 
-======================================================================
-Q2: Tech-only (7 tickers) vs All (10 tickers)
-======================================================================
-Tech-only: 1679 rows, 21 features
-All:       2390 rows, 22 features
-
-  LogReg           Tech: Acc=0.5068 AUC=0.5036 Maj=0.5240  |  All: Acc=0.5246 AUC=0.5072 Maj=0.5392
-  XGBoost          Tech: Acc=0.5097 AUC=0.5004 Maj=0.5240  |  All: Acc=0.5131 AUC=0.4994 Maj=0.5392
-  RandomForest     Tech: Acc=0.5054 AUC=0.4780 Maj=0.5240  |  All: Acc=0.5357 AUC=0.4987 Maj=0.5392
-
-======================================================================
-Q3: Sentiment-only vs Market-only vs Combined (10 tickers)
-======================================================================
-
-  [Sentiment-only] (14 features: ['sent_mean', 'sent_std', 'sent_max', 'sent_min', 'news_count', 'pub_Benzinga_sent', 'pub_Yahoo_sent', 'pub_DowJones_sent', 'pub_SeekingAlpha_sent', 'pub_MarketWatch_sent', 'pub_Finnhub_sent', 'pub_CNBC_sent', 'pub_ChartMill_sent', 'pub_Fintel_sent'])
-    LogReg           Acc=0.5226  AUC=0.5035  Majority=0.5392
-    XGBoost          Acc=0.5136  AUC=0.5132  Majority=0.5392
-    RandomForest     Acc=0.5196  AUC=0.5049  Majority=0.5392
-
-  [Market-only] (8 features: ['PE_Ratio', 'Volume', 'volume_pct_chg', 'pe_chg', 'ma5_ratio', 'ma10_ratio', 'momentum_5d', 'volatility_5d'])
-    LogReg           Acc=0.5302  AUC=0.5115  Majority=0.5392
-    XGBoost          Acc=0.5231  AUC=0.4942  Majority=0.5392
-    RandomForest     Acc=0.5332  AUC=0.4919  Majority=0.5392
-
-  [Combined] (22 features: ['sent_mean', 'sent_std', 'sent_max', 'sent_min', 'news_count', 'pub_Benzinga_sent', 'pub_Yahoo_sent', 'pub_DowJones_sent', 'pub_SeekingAlpha_sent', 'pub_MarketWatch_sent', 'pub_Finnhub_sent', 'pub_CNBC_sent', 'pub_ChartMill_sent', 'pub_Fintel_sent', 'PE_Ratio', 'Volume', 'volume_pct_chg', 'pe_chg', 'ma5_ratio', 'ma10_ratio', 'momentum_5d', 'volatility_5d'])
-    LogReg           Acc=0.5246  AUC=0.5072  Majority=0.5392
-    XGBoost          Acc=0.5131  AUC=0.4994  Majority=0.5392
-    RandomForest     Acc=0.5357  AUC=0.4987  Majority=0.5392
-
-======================================================================
-Done. All ablation experiments complete.
-======================================================================
+EXP 2: Feature Groups (Best Model: xgb)
+  Sentiment-only : AUC=0.5403
+  Market-only    : AUC=0.5585
+  Combined       : AUC=0.5704

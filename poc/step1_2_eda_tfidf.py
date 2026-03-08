@@ -1,12 +1,14 @@
 """
-ST545 POC v4 — Step 1 & 2: EDA + TF-IDF Baseline
-===================================================
-10 tickers: NVDA, GOOGL, MSFT, AMZN, TSLA, LMT, NEM, AAPL, META, JPM
-Publisher normalization (benzinga → Benzinga)
+ST545 POC v9 (Unified) — Step 1 & 2: NLP Benchmarking (TF-IDF vs FinBERT)
+===========================================================================
+Refactored to compare NLP representations for EACH ticker in one place.
+1. Global EDA (Publisher Distribution).
+2. Ticker-Specific TF-IDF vs FinBERT Embedding performance comparison.
 """
 
 import pandas as pd
 import numpy as np
+import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,12 +16,14 @@ import seaborn as sns
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 import re
+import warnings
+warnings.filterwarnings('ignore')
 
 try:
     nltk.data.find('corpora/stopwords')
@@ -28,127 +32,113 @@ except LookupError:
 
 PUBLISHER_NORM = {'benzinga': 'Benzinga'}
 TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+CACHE_PATH = 'dataset/sentiment_cache.csv'
+EMBED_CACHE_PATH = 'dataset/finbert_embeddings_768_v8.npy'
 
-# ── 1. Load Data ──
-all_daily = []
+# 1. Load Data & Embeddings
+print("--- Loading Global Cache & FinBERT Embeddings ---")
+cache_df = pd.read_csv(CACHE_PATH)
+valid_pubs = cache_df['Publisher'].value_counts()[lambda x: x >= 100].index.tolist()
+cache_df = cache_df[cache_df['Publisher'].isin(valid_pubs)].copy()
+cache_df['Date'] = pd.to_datetime(cache_df['Date'])
+
+if os.path.exists(EMBED_CACHE_PATH):
+    embeddings = np.load(EMBED_CACHE_PATH)
+    cache_embed_cols = [f'emb_{i}' for i in range(768)]
+    cache_df = pd.concat([cache_df.reset_index(drop=True), pd.DataFrame(embeddings, columns=cache_embed_cols)], axis=1)
+else:
+    print("WARNING: FinBERT cache not found. Only TF-IDF will be run.")
+    cache_embed_cols = []
+
+# 2. Text Preprocessing
+ps = PorterStemmer()
+stop_words = set(stopwords.words('english'))
+def preprocess_text(text):
+    if not isinstance(text, str): return ""
+    text = re.sub('[^a-zA-Z]', ' ', text).lower().split()
+    return ' '.join([ps.stem(word) for word in text if word not in stop_words])
+
+all_ticker_results = []
+all_data_for_eda = []
+
+print("\n--- Starting Ticker-Specific Benchmarking (TF-IDF vs FinBERT) ---")
+
 for ticker in TICKERS:
+    print(f"\n>>> Analyzing {ticker}...")
     market = pd.read_csv(f"dataset/{ticker}_market.csv")
-    news = pd.read_csv(f"dataset/{ticker}_news.csv")
     market['Date'] = pd.to_datetime(market['Date'])
-    news['Date'] = pd.to_datetime(news['Date'])
-    news['Publisher'] = news['Publisher'].replace(PUBLISHER_NORM)
-
-    market = market.sort_values('Date')
     market['Next_Close'] = market['Close'].shift(-1)
     market['Price_Label'] = (market['Next_Close'] > market['Close']).astype(int)
     market = market.dropna(subset=['Price_Label'])
-    market['Price_Label'] = market['Price_Label'].astype(int)
 
-    news['Summary'] = news['Summary'].fillna('')
-    news['Text'] = news['Headline'].str.strip() + '. ' + news['Summary'].str.strip()
-    news['Text'] = news['Text'].str.strip('. ')
+    ticker_news = cache_df[cache_df['Ticker'] == ticker].copy()
+    df_t = pd.merge(ticker_news, market[['Date', 'Price_Label']], on='Date', how='inner').dropna()
+    all_data_for_eda.append(df_t)
+    
+    if len(df_t) < 100:
+        print(f"  Skipping {ticker} (insufficient data).")
+        continue
 
-    merged = pd.merge(news, market[['Date', 'Ticker', 'Close', 'Volume', 'PE_Ratio', 'Price_Label']],
-                       on=['Date', 'Ticker'], how='inner')
-    all_daily.append(merged)
+    # A. TF-IDF Prep
+    texts = (df_t['Headline'].fillna('') + " " + df_t['Summary'].fillna('')).tolist()
+    X_tfidf = TfidfVectorizer(max_features=500).fit_transform([preprocess_text(t) for t in texts]).toarray()
+    
+    # B. FinBERT Prep (if exists)
+    X_fin = df_t[cache_embed_cols].values if cache_embed_cols else None
+    
+    y = df_t['Price_Label'].values
+    tscv = TimeSeriesSplit(n_splits=3)
+    sc = StandardScaler()
+    
+    scores = {'TF-IDF': [], 'FinBERT': []}
+    for tr, te in tscv.split(y):
+        # Model TF-IDF
+        m1 = LogisticRegression(max_iter=1000).fit(sc.fit_transform(X_tfidf[tr]), y[tr])
+        scores['TF-IDF'].append(roc_auc_score(y[te], m1.predict_proba(sc.transform(X_tfidf[te]))[:, 1]))
+        
+        # Model FinBERT
+        if X_fin is not None:
+            m2 = LogisticRegression(max_iter=1000).fit(sc.fit_transform(X_fin[tr]), y[tr])
+            scores['FinBERT'].append(roc_auc_score(y[te], m2.predict_proba(sc.transform(X_fin[te]))[:, 1]))
 
-df = pd.concat(all_daily, ignore_index=True).sort_values('Date').reset_index(drop=True)
-print(f"--- Data Loaded: {len(df)} rows, {df['Date'].nunique()} unique dates, {df['Ticker'].nunique()} tickers ---")
-print(f"--- Label Balance: {df['Price_Label'].value_counts(normalize=True).to_dict()} ---")
+    res = {
+        'Ticker': ticker,
+        'TF-IDF_AUC': np.mean(scores['TF-IDF']),
+        'FinBERT_AUC': np.mean(scores['FinBERT']) if cache_embed_cols else 0.0,
+        'Samples': len(df_t)
+    }
+    print(f"  {ticker} Done. TF-IDF: {res['TF-IDF_AUC']:.4f} | FinBERT: {res['FinBERT_AUC']:.4f}")
+    all_ticker_results.append(res)
 
-# ── 2. EDA: Publisher Distribution ──
+# 3. Aggregation & Viz
+res_df = pd.DataFrame(all_ticker_results)
+res_df.to_csv('poc/result/step1_2_ticker_summary.csv', index=False)
+
+# Global EDA Plot
+global_df = pd.concat(all_data_for_eda)
 plt.figure(figsize=(12, 6))
-top_publishers = df['Publisher'].value_counts().head(15)
-sns.barplot(x=top_publishers.values, y=top_publishers.index, palette='viridis')
-plt.title('Top 15 News Publishers (10 Tickers, Normalized)')
-plt.xlabel('Number of Articles')
-plt.tight_layout()
-plt.savefig('poc/result/publisher_distribution.png', dpi=150)
-plt.close()
+top_p = global_df['Publisher'].value_counts().head(10)
+sns.barplot(x=top_p.values, y=top_p.index, palette='viridis')
+plt.title('Global Publisher Distribution')
+plt.savefig('poc/result/publisher_distribution.png', bbox_inches='tight'); plt.close()
 
-# ── 3. Text Preprocessing ──
-ps = PorterStemmer()
-stop_words = set(stopwords.words('english'))
-
-def preprocess_text(text):
-    if not isinstance(text, str):
-        return ""
-    text = re.sub('[^a-zA-Z]', ' ', text)
-    text = text.lower().split()
-    text = [ps.stem(word) for word in text if word not in stop_words]
-    return ' '.join(text)
-
-print("--- Preprocessing text... ---")
-df['Processed_Text'] = df['Text'].apply(preprocess_text)
-
-# ── 4. TF-IDF Features ──
-tfidf = TfidfVectorizer(max_features=1000)
-X_text = tfidf.fit_transform(df['Processed_Text']).toarray()
-
-scaler = StandardScaler()
-X_numeric = scaler.fit_transform(df[['PE_Ratio', 'Volume']])
-X = np.hstack((X_text, X_numeric))
-y = df['Price_Label'].values
-
-# ── 5. TimeSeriesSplit Evaluation ──
-print("--- Training with TimeSeriesSplit (5 folds)... ---")
-tscv = TimeSeriesSplit(n_splits=5)
-
-results = {'acc': [], 'auc': [], 'f1': []}
-baseline_results = {'majority_acc': []}
-
-for fold, (train_idx, test_idx) in enumerate(tscv.split(X)):
-    X_train, X_test = X[train_idx], X[test_idx]
-    y_train, y_test = y[train_idx], y[test_idx]
-
-    majority_class = np.bincount(y_train).argmax()
-    baseline_results['majority_acc'].append(accuracy_score(y_test, np.full(len(y_test), majority_class)))
-
-    model = LogisticRegression(max_iter=1000, random_state=42)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]
-
-    results['acc'].append(accuracy_score(y_test, y_pred))
-    results['auc'].append(roc_auc_score(y_test, y_prob))
-    results['f1'].append(f1_score(y_test, y_pred))
-
-    print(f"  Fold {fold+1}: Acc={results['acc'][-1]:.4f}, AUC={results['auc'][-1]:.4f}, "
-          f"F1={results['f1'][-1]:.4f} | Majority Acc={baseline_results['majority_acc'][-1]:.4f}")
-
-# ── 6. Summary ──
-avg_acc = np.mean(results['acc'])
-avg_auc = np.mean(results['auc'])
-avg_f1 = np.mean(results['f1'])
-avg_majority = np.mean(baseline_results['majority_acc'])
-
-print(f"\n{'='*50}")
-print(f"  POC v4 Step 1 & 2 Results (TimeSeriesSplit)")
-print(f"{'='*50}")
-print(f"  TF-IDF + LogReg (5-fold avg):")
-print(f"    Accuracy : {avg_acc:.4f}")
-print(f"    ROC-AUC  : {avg_auc:.4f}")
-print(f"    F1       : {avg_f1:.4f}")
-print(f"  Baselines:")
-print(f"    Majority Vote Acc : {avg_majority:.4f}")
-print(f"  Tickers: {len(TICKERS)}, Total articles: {len(df)}")
+# Comparison Plot
+plt.figure(figsize=(12, 6))
+x_axis = np.arange(len(res_df))
+width = 0.35
+plt.bar(x_axis - width/2, res_df['TF-IDF_AUC'], width, label='TF-IDF', color='lightgray')
+plt.bar(x_axis + width/2, res_df['FinBERT_AUC'], width, label='FinBERT', color='skyblue')
+plt.xticks(x_axis, res_df['Ticker'])
+plt.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
+plt.ylabel('ROC-AUC')
+plt.title('Benchmarking: TF-IDF vs FinBERT (Ticker-Specific)')
+plt.legend(); plt.savefig('poc/result/finbert_tfidf_comparison.png', bbox_inches='tight'); plt.close()
 
 with open('poc/result/eda_tfidf_results.txt', 'w') as f:
-    f.write("ST545 POC v4 Step 1 & 2 Results\n")
-    f.write("================================\n")
-    f.write(f"Dataset: {len(df)} articles, {df['Date'].nunique()} dates, {len(TICKERS)} tickers\n")
-    f.write(f"Tickers: {TICKERS}\n")
-    f.write(f"Publisher normalization: benzinga → Benzinga\n")
-    f.write(f"Validation: TimeSeriesSplit (5 folds)\n")
-    f.write(f"Label Balance (Up): {df['Price_Label'].mean():.2%}\n\n")
-    f.write(f"TF-IDF + LogReg (5-fold avg):\n")
-    f.write(f"  Accuracy : {avg_acc:.4f}\n")
-    f.write(f"  ROC-AUC  : {avg_auc:.4f}\n")
-    f.write(f"  F1       : {avg_f1:.4f}\n\n")
-    f.write(f"Baselines:\n")
-    f.write(f"  Majority Vote Accuracy : {avg_majority:.4f}\n\n")
-    f.write(f"Per-fold results:\n")
-    for i in range(5):
-        f.write(f"  Fold {i+1}: Acc={results['acc'][i]:.4f}, AUC={results['auc'][i]:.4f}, F1={results['f1'][i]:.4f}\n")
+    f.write("ST545 POC v9 Step 1 & 2 - Unified NLP Benchmarking\n" + "="*60 + "\n")
+    f.write(res_df.to_string(index=False))
+    if cache_embed_cols:
+        gain = res_df['FinBERT_AUC'].mean() - res_df['TF-IDF_AUC'].mean()
+        f.write(f"\n\nAverage FinBERT Gain over TF-IDF: {gain:+.4f}")
 
-print("\n[+] POC v4 Step 1 & 2 complete. Results in poc/result/")
+print(f"\n[+] Step 1 & 2 complete. Reports and plots generated in poc/result/")

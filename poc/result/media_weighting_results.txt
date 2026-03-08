@@ -1,0 +1,17 @@
+ST545 POC v9 Step 3 - Comprehensive Media Analysis
+============================================================
+Global articles: 46461
+Non-zero features: 0/21
+
+--- Ticker-Specific Best Signals ---
+Ticker    Best_Feature  Articles
+  NVDA    pub_Benzinga      6896
+ GOOGL    pub_Benzinga      5200
+  MSFT    pub_Benzinga      5088
+  AMZN    pub_Benzinga      5380
+  TSLA    pub_Benzinga      6216
+   LMT    pub_Benzinga      2432
+   NEM      pub_Fintel      1820
+  AAPL pub_MarketWatch      5276
+  META    pub_Benzinga      4908
+   JPM    pub_Benzinga      3245

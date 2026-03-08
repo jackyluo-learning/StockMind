@@ -1,10 +1,9 @@
 """
-ST545 POC v4 — Ablation Study
-===============================
-Three experiments:
-  Q1: RandomForest vs XGBoost vs LogReg (same data)
-  Q2: Tech-only (7 tickers) vs All (10 tickers)
-  Q3: Sentiment-only vs Market-only vs Combined
+ST545 POC v9 (Fix) — Systematic Ablation Study: Focus LMT
+=========================================================
+1. Feature Groups: Sentiment-only vs. Market-only vs. Combined.
+2. Model Classes: LogReg vs. XGBoost vs. Random Forest vs. MLP.
+3. Logical consistency with Step 4 (Lags + PCA).
 """
 
 import pandas as pd
@@ -12,188 +11,90 @@ import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 import xgboost as xgb
+import warnings
+warnings.filterwarnings('ignore')
 
-ALL_TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
-TECH_TICKERS = ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'AAPL', 'META']
+TICKER = 'LMT' # Focus on best ticker
 CACHE_PATH = 'dataset/sentiment_cache.csv'
+EMBED_CACHE_PATH = 'dataset/finbert_embeddings_768_v8.npy'
 
-MARKET_COLS = ['PE_Ratio', 'Volume', 'volume_pct_chg', 'pe_chg',
-               'ma5_ratio', 'ma10_ratio', 'momentum_5d', 'volatility_5d']
-
+# 1. Load Data (Same logic as Step 4)
 cache = pd.read_csv(CACHE_PATH)
 cache['Date'] = pd.to_datetime(cache['Date'])
+embeddings = np.load(EMBED_CACHE_PATH)
+cache_embed_cols = [f'emb_{i}' for i in range(768)]
+cache = pd.concat([cache.reset_index(drop=True), pd.DataFrame(embeddings, columns=cache_embed_cols)], axis=1)
 
-# ── Build daily dataset for arbitrary ticker list ──
-def build_daily(tickers):
-    all_daily = []
-    for ticker in tickers:
-        market = pd.read_csv(f"dataset/{ticker}_market.csv")
-        market['Date'] = pd.to_datetime(market['Date'])
-        market = market.sort_values('Date')
-        market['Next_Close'] = market['Close'].shift(-1)
-        market['Price_Label'] = (market['Next_Close'] > market['Close']).astype(int)
-        market = market.dropna(subset=['Price_Label'])
-        market['Price_Label'] = market['Price_Label'].astype(int)
-        market['volume_pct_chg'] = market['Volume'].pct_change()
-        market['pe_chg'] = market['PE_Ratio'].diff()
-        market['MA5'] = market['Close'].rolling(5).mean()
-        market['MA10'] = market['Close'].rolling(10).mean()
-        market['ma5_ratio'] = market['Close'] / market['MA5']
-        market['ma10_ratio'] = market['Close'] / market['MA10']
-        market['momentum_5d'] = market['Close'].pct_change(5)
-        market['volatility_5d'] = market['Close'].pct_change().rolling(5).std()
+market = pd.read_csv(f"dataset/{TICKER}_market.csv")
+market['Date'] = pd.to_datetime(market['Date'])
+market = market.sort_values('Date')
+market['Next_Close'] = market['Close'].shift(-1)
+market['Price_Label'] = (market['Next_Close'] > market['Close']).astype(int)
+market = market.dropna(subset=['Price_Label'])
+market['vol_pct_chg'] = market['Volume'].pct_change()
+market['pe_chg'] = market['PE_Ratio'].diff()
+market['ma10_ratio'] = market['Close'] / market['Close'].rolling(10).mean()
+market['volatility_5d'] = market['Close'].pct_change().rolling(5).std()
 
-        ticker_news = cache[cache['Ticker'] == ticker].copy()
-        daily_sent = ticker_news.groupby('Date')['Sentiment_Score'].agg(
-            sent_mean='mean', sent_std='std', sent_max='max', sent_min='min',
-            news_count='count'
-        ).reset_index()
-        daily_sent['sent_std'] = daily_sent['sent_std'].fillna(0)
+ticker_news = cache[cache['Ticker'] == TICKER].copy()
+daily_sent = ticker_news.groupby('Date').agg({
+    'Sentiment_Score': ['mean', 'std', 'max'],
+    **{c: 'mean' for c in cache_embed_cols}
+}).reset_index()
+daily_sent.columns = ['Date', 'sent_mean', 'sent_std', 'sent_max'] + cache_embed_cols
+for lag in [1, 2, 3]: daily_sent[f'sent_mean_lag{lag}'] = daily_sent['sent_mean'].shift(lag)
 
-        for pub in ticker_news['Publisher'].unique():
-            pub_col = f"pub_{pub}_sent"
-            pub_daily = ticker_news[ticker_news['Publisher'] == pub].groupby('Date')['Sentiment_Score'].mean()
-            pub_daily = pub_daily.reset_index().rename(columns={'Sentiment_Score': pub_col})
-            daily_sent = pd.merge(daily_sent, pub_daily, on='Date', how='left')
+df = pd.merge(market, daily_sent, on='Date', how='inner').dropna().reset_index(drop=True)
 
-        market_cols = ['Date', 'Ticker', 'PE_Ratio', 'Volume', 'Price_Label',
-                       'volume_pct_chg', 'pe_chg', 'ma5_ratio', 'ma10_ratio',
-                       'momentum_5d', 'volatility_5d']
-        daily = pd.merge(market[market_cols], daily_sent, on='Date', how='inner')
-        all_daily.append(daily)
+# PCA Reduction (Consistent with Step 4)
+pca = PCA(n_components=16, random_state=42)
+pca_feats = pca.fit_transform(df[cache_embed_cols].values)
+MARKET_COLS = ['PE_Ratio', 'vol_pct_chg', 'pe_chg', 'ma10_ratio', 'volatility_5d']
+SENT_BASE = ['sent_mean', 'sent_std', 'sent_max', 'sent_mean_lag1', 'sent_mean_lag2', 'sent_mean_lag3']
+pca_cols = [f'pca_emb_{i}' for i in range(16)]
 
-    df = pd.concat(all_daily, ignore_index=True)
-    df = df.dropna(subset=['Price_Label']).sort_values('Date').reset_index(drop=True)
-    pub_sent_cols = [c for c in df.columns if c.startswith('pub_') and c.endswith('_sent')]
-    df[pub_sent_cols] = df[pub_sent_cols].fillna(0)
-    df = df.dropna().reset_index(drop=True)
-    return df, pub_sent_cols
+X_all = np.hstack((df[MARKET_COLS + SENT_BASE].values, pca_feats))
+X_sent = np.hstack((df[SENT_BASE].values, pca_feats))
+X_market = df[MARKET_COLS].values
+y = df['Price_Label'].values
 
-# ── Evaluate model with TimeSeriesSplit ──
-def evaluate(X, y, model_fn, n_splits=5):
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    scaler = StandardScaler()
-    accs, aucs, maj_accs = [], [], []
-    for train_idx, test_idx in tscv.split(X):
-        X_tr, X_te = X[train_idx], X[test_idx]
-        y_tr, y_te = y[train_idx], y[test_idx]
-        X_tr = scaler.fit_transform(X_tr)
-        X_te = scaler.transform(X_te)
-        model = model_fn()
-        model.fit(X_tr, y_tr)
-        pred = model.predict(X_te)
-        prob = model.predict_proba(X_te)[:, 1]
-        accs.append(accuracy_score(y_te, pred))
-        aucs.append(roc_auc_score(y_te, prob))
-        maj = np.bincount(y_tr).argmax()
-        maj_accs.append(accuracy_score(y_te, np.full(len(y_te), maj)))
-    return np.mean(accs), np.mean(aucs), np.mean(maj_accs), accs, aucs
+def evaluate(X, y, model_type='xgb'):
+    tscv = TimeSeriesSplit(n_splits=3)
+    sc = StandardScaler()
+    aucs = []
+    for tr, te in tscv.split(X):
+        X_tr, X_te = sc.fit_transform(X[tr]), sc.transform(X[te])
+        if model_type == 'lr': m = LogisticRegression()
+        elif model_type == 'xgb': m = xgb.XGBClassifier(n_estimators=100, max_depth=3, random_state=42)
+        elif model_type == 'rf': m = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
+        elif model_type == 'mlp': m = MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=500, random_state=42)
+        m.fit(X_tr, y[tr])
+        aucs.append(roc_auc_score(y[te], m.predict_proba(X_te)[:, 1]))
+    return np.mean(aucs)
 
-SENT_AGG = ['sent_mean', 'sent_std', 'sent_max', 'sent_min', 'news_count']
+# --- EXP 1: Model Classes (Combined Features) ---
+results_m = {m: evaluate(X_all, y, m) for m in ['lr', 'xgb', 'rf', 'mlp']}
 
-# ══════════════════════════════════════════════════════
-#  Q1: RandomForest vs XGBoost vs LogReg (10 tickers)
-# ══════════════════════════════════════════════════════
-print("=" * 70)
-print("Q1: RandomForest vs XGBoost vs LogReg (10 tickers, all features)")
-print("=" * 70)
-
-df_all, pub_cols_all = build_daily(ALL_TICKERS)
-FEAT_ALL = SENT_AGG + pub_cols_all + MARKET_COLS
-X_all = df_all[FEAT_ALL].values
-y_all = df_all['Price_Label'].values
-
-models_q1 = {
-    'LogReg': lambda: LogisticRegression(max_iter=1000, random_state=42),
-    'XGBoost': lambda: xgb.XGBClassifier(
-        n_estimators=100, max_depth=3, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, min_child_weight=5,
-        random_state=42, eval_metric='logloss'),
-    'RandomForest-100': lambda: RandomForestClassifier(
-        n_estimators=100, max_depth=5, min_samples_leaf=10,
-        random_state=42),
-    'RandomForest-200': lambda: RandomForestClassifier(
-        n_estimators=200, max_depth=4, min_samples_leaf=15,
-        random_state=42),
-    'RandomForest-500': lambda: RandomForestClassifier(
-        n_estimators=500, max_depth=3, min_samples_leaf=20,
-        random_state=42),
+# --- EXP 2: Feature Groups (Best Model from EXP 1) ---
+best_model_name = max(results_m, key=results_m.get)
+res_f = {
+    'Sentiment-only': evaluate(X_sent, y, best_model_name),
+    'Market-only': evaluate(X_market, y, best_model_name),
+    'Combined': evaluate(X_all, y, best_model_name)
 }
 
-print(f"Dataset: {len(df_all)} rows, {len(FEAT_ALL)} features\n")
-q1_results = {}
-for name, fn in models_q1.items():
-    acc, auc, maj, accs, aucs = evaluate(X_all, y_all, fn)
-    q1_results[name] = (acc, auc, maj)
-    print(f"  {name:20s}  Acc={acc:.4f}  AUC={auc:.4f}  Majority={maj:.4f}  "
-          f"per-fold AUC=[{', '.join(f'{a:.3f}' for a in aucs)}]")
+# Save
+with open('poc/result/ablation_results.txt', 'w') as f:
+    f.write(f"ST545 POC v9 Ablation Report (Ticker: {TICKER})\n" + "="*50 + "\n\n")
+    f.write(f"EXP 1: Model Comparison (Combined Features)\n")
+    for k, v in results_m.items(): f.write(f"  {k:8s}: AUC={v:.4f}\n")
+    
+    f.write(f"\nEXP 2: Feature Groups (Best Model: {best_model_name})\n")
+    for k, v in res_f.items(): f.write(f"  {k:15s}: AUC={v:.4f}\n")
 
-# ══════════════════════════════════════════════════════
-#  Q2: Tech-only (7) vs All (10)
-# ══════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("Q2: Tech-only (7 tickers) vs All (10 tickers)")
-print("=" * 70)
-
-df_tech, pub_cols_tech = build_daily(TECH_TICKERS)
-FEAT_TECH = SENT_AGG + pub_cols_tech + MARKET_COLS
-X_tech = df_tech[FEAT_TECH].values
-y_tech = df_tech['Price_Label'].values
-
-print(f"Tech-only: {len(df_tech)} rows, {len(FEAT_TECH)} features")
-print(f"All:       {len(df_all)} rows, {len(FEAT_ALL)} features\n")
-
-for name, fn in [
-    ('LogReg', lambda: LogisticRegression(max_iter=1000, random_state=42)),
-    ('XGBoost', lambda: xgb.XGBClassifier(
-        n_estimators=100, max_depth=3, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, min_child_weight=5,
-        random_state=42, eval_metric='logloss')),
-    ('RandomForest', lambda: RandomForestClassifier(
-        n_estimators=200, max_depth=4, min_samples_leaf=15,
-        random_state=42)),
-]:
-    acc_t, auc_t, maj_t, _, _ = evaluate(X_tech, y_tech, fn)
-    acc_a, auc_a, maj_a, _, _ = evaluate(X_all, y_all, fn)
-    print(f"  {name:15s}  Tech: Acc={acc_t:.4f} AUC={auc_t:.4f} Maj={maj_t:.4f}  |  "
-          f"All: Acc={acc_a:.4f} AUC={auc_a:.4f} Maj={maj_a:.4f}")
-
-# ══════════════════════════════════════════════════════
-#  Q3: Sentiment-only vs Market-only vs Combined
-# ══════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("Q3: Sentiment-only vs Market-only vs Combined (10 tickers)")
-print("=" * 70)
-
-FEAT_SENT = SENT_AGG + pub_cols_all
-FEAT_MARKET = MARKET_COLS
-
-feature_sets = {
-    'Sentiment-only': FEAT_SENT,
-    'Market-only': FEAT_MARKET,
-    'Combined': FEAT_ALL,
-}
-
-for feat_name, feat_cols in feature_sets.items():
-    X_sub = df_all[feat_cols].values
-    print(f"\n  [{feat_name}] ({len(feat_cols)} features: {feat_cols})")
-    for model_name, fn in [
-        ('LogReg', lambda: LogisticRegression(max_iter=1000, random_state=42)),
-        ('XGBoost', lambda: xgb.XGBClassifier(
-            n_estimators=100, max_depth=3, learning_rate=0.05,
-            subsample=0.8, colsample_bytree=0.8, min_child_weight=5,
-            random_state=42, eval_metric='logloss')),
-        ('RandomForest', lambda: RandomForestClassifier(
-            n_estimators=200, max_depth=4, min_samples_leaf=15,
-            random_state=42)),
-    ]:
-        acc, auc, maj, _, _ = evaluate(X_sub, y_all, fn)
-        print(f"    {model_name:15s}  Acc={acc:.4f}  AUC={auc:.4f}  Majority={maj:.4f}")
-
-# ── Save ──
-print("\n" + "=" * 70)
-print("Done. All ablation experiments complete.")
-print("=" * 70)
+print(f"\n[+] Ablation study complete for {TICKER}. Results in poc/result/ablation_results.txt")

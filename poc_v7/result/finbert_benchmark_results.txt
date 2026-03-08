@@ -1,0 +1,16 @@
+ST545 POC v4 Step 5 Results: FinBERT vs TF-IDF (Fair Comparison)
+=================================================================
+Tickers: ['NVDA', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'LMT', 'NEM', 'AAPL', 'META', 'JPM']
+Dataset: 8000 articles (last 8000)
+Text Input: Headline + Summary
+Publisher normalization: benzinga → Benzinga
+Validation: TimeSeriesSplit (5 folds)
+Classifier: LogisticRegression (same for all)
+
+Method                                        Acc      AUC       F1
+--------------------------------------------------------------------
+TF-IDF (500-dim)                           0.5064   0.5193   0.4512
+FinBERT Embedding (768-dim)                0.5083   0.5268   0.4590
+FinBERT 3-class (3-dim, v1 style)          0.4914   0.4871   0.3429
+Majority Vote Baseline                     0.4914      N/A      N/A
+Random Baseline                               N/A   0.5000      N/A

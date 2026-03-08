@@ -1,0 +1,6 @@
+ST545 POC v6 Ablation Results
+========================================
+
+[Sentiment-only]  LogReg           Acc=0.5382  AUC=0.5076  Majority=0.5392  XGBoost          Acc=0.5382  AUC=0.4860  Majority=0.5392  RandomForest     Acc=0.5317  AUC=0.4815  Majority=0.5392
+[Market-only]  LogReg           Acc=0.5392  AUC=0.5255  Majority=0.5392  XGBoost          Acc=0.5397  AUC=0.5124  Majority=0.5392  RandomForest     Acc=0.5397  AUC=0.4977  Majority=0.5392
+[Combined]  LogReg           Acc=0.5382  AUC=0.5053  Majority=0.5392  XGBoost          Acc=0.5402  AUC=0.4982  Majority=0.5392  RandomForest     Acc=0.5402  AUC=0.5002  Majority=0.5392
