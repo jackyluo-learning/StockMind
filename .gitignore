@@ -1,5 +1,13 @@
 # Large dataset and feature matrix files
 *.csv
+*.npy
+*.png
+
+# Dataset artifacts
+dataset/*_hist_cache.csv
+dataset/*_news.csv
+dataset/real_*_dataset.csv
+dataset/sentiment_cache.csv
 
 # Python/Environment
 __pycache__/
