@@ -112,7 +112,7 @@ for ticker in TICKERS:
 
 # 3. Aggregation & Viz
 res_df = pd.DataFrame(all_ticker_results)
-res_df.to_csv('poc/result/step1_2_ticker_summary.csv', index=False)
+res_df.to_csv('poc/result/step1_2/step1_2_ticker_summary.csv', index=False)
 
 # Global EDA Plot
 global_df = pd.concat(all_data_for_eda)
@@ -120,7 +120,7 @@ plt.figure(figsize=(12, 6))
 top_p = global_df['Publisher'].value_counts().head(10)
 sns.barplot(x=top_p.values, y=top_p.index, palette='viridis')
 plt.title('Global Publisher Distribution')
-plt.savefig('poc/result/publisher_distribution.png', bbox_inches='tight'); plt.close()
+plt.savefig('poc/result/step1_2/publisher_distribution.png', bbox_inches='tight'); plt.close()
 
 # Comparison Plot
 plt.figure(figsize=(12, 6))
@@ -132,13 +132,13 @@ plt.xticks(x_axis, res_df['Ticker'])
 plt.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
 plt.ylabel('ROC-AUC')
 plt.title('Benchmarking: TF-IDF vs FinBERT (Ticker-Specific)')
-plt.legend(); plt.savefig('poc/result/finbert_tfidf_comparison.png', bbox_inches='tight'); plt.close()
+plt.legend(); plt.savefig('poc/result/step1_2/finbert_tfidf_comparison.png', bbox_inches='tight'); plt.close()
 
-with open('poc/result/eda_tfidf_results.txt', 'w') as f:
+with open('poc/result/step1_2/eda_tfidf_results.txt', 'w') as f:
     f.write("ST545 POC v9 Step 1 & 2 - Unified NLP Benchmarking\n" + "="*60 + "\n")
     f.write(res_df.to_string(index=False))
     if cache_embed_cols:
         gain = res_df['FinBERT_AUC'].mean() - res_df['TF-IDF_AUC'].mean()
         f.write(f"\n\nAverage FinBERT Gain over TF-IDF: {gain:+.4f}")
 
-print(f"\n[+] Step 1 & 2 complete. Reports and plots generated in poc/result/")
+print(f"\n[+] Step 1 & 2 complete. Reports and plots generated in poc/result/step1_2/")

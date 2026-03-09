@@ -1,9 +1,9 @@
 """
-ST545 POC v9 (Enhanced) — Step 4: NLP Representation Battle (XGBoost)
-========================================================================
-1. Ticker-specific modeling for all 10 stocks.
-2. Fair Comparison: XGBoost with 16-dim FinBERT PCA vs 16-dim TF-IDF PCA.
-3. Quantifies if deep semantics beats statistical frequency in non-linear regimes.
+ST545 POC v9 (Enhanced) — Step 4: Tuned NLP Representation Battle & SHAP Analysis
+===================================================================================
+1. Ticker-specific modeling for all 10 stocks with GridSearchCV tuning.
+2. Fair Comparison: Tuned XGBoost with FinBERT PCA vs TF-IDF PCA.
+3. SHAP Interpretation: Rank importance and Sentiment vs Market attribution percentages.
 """
 
 import pandas as pd
@@ -12,8 +12,8 @@ import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
+from sklearn.metrics import roc_auc_score, make_scorer
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -51,8 +51,15 @@ def preprocess_text(text):
 
 all_ticker_summary = []
 
+# Hyperparameter Grid
+param_grid = {
+    'n_estimators': [50, 100],
+    'max_depth': [3, 5],
+    'learning_rate': [0.05, 0.1]
+}
+
 for ticker in TICKERS:
-    print(f"\n>>> Battle: {ticker}...")
+    print(f"\n>>> Tuning & Battle: {ticker}...")
     market = pd.read_csv(f"dataset/{ticker}_market.csv")
     market['Date'] = pd.to_datetime(market['Date'])
     market = market.sort_values('Date')
@@ -75,7 +82,7 @@ for ticker in TICKERS:
     daily_sent.columns = ['Date', 'sent_mean', 'sent_std', 'sent_max'] + cache_embed_cols
     for lag in [1, 2, 3]: daily_sent[f'sent_mean_lag{lag}'] = daily_sent['sent_mean'].shift(lag)
 
-    # B. TF-IDF Daily Aggregation (Concatenate all news text for that day)
+    # B. TF-IDF Daily Aggregation
     ticker_news['Full_Text'] = ticker_news['Headline'].fillna('') + " " + ticker_news['Summary'].fillna('')
     daily_text = ticker_news.groupby('Date')['Full_Text'].apply(lambda x: " ".join(x)).reset_index()
     
@@ -87,39 +94,69 @@ for ticker in TICKERS:
     # --- Feature Engineering ---
     MARKET_BASE = ['PE_Ratio', 'vol_pct_chg', 'pe_chg', 'ma10_ratio', 'volatility_5d']
     SENT_BASE = ['sent_mean', 'sent_std', 'sent_max', 'sent_mean_lag1', 'sent_mean_lag2', 'sent_mean_lag3']
-    X_market_sent = df_t[MARKET_BASE + SENT_BASE].values
     
-    # PCA FinBERT (16-dim)
+    # PCA FinBERT (16-dim) directly from the 768-dim embeddings
+    # These are already aggregated by 'mean' in daily_sent[cache_embed_cols]
     pca_fin = PCA(n_components=16, random_state=42)
-    X_fin_pca = pca_fin.fit_transform(df_t[cache_embed_cols].values)
+    fin_pca_data = pca_fin.fit_transform(df_t[cache_embed_cols].values)
+    pca_cols = [f'finbert_pca_{i}' for i in range(16)]
+    df_fin_pca = pd.DataFrame(fin_pca_data, columns=pca_cols)
     
-    # PCA TF-IDF (16-dim for fair fight)
+    # PCA TF-IDF (16-dim)
     tfidf_raw = TfidfVectorizer(max_features=500).fit_transform([preprocess_text(t) for t in df_t['Full_Text']]).toarray()
     pca_tfidf = PCA(n_components=16, random_state=42)
     X_tfidf_pca = pca_tfidf.fit_transform(tfidf_raw)
     
     y = df_t['Price_Label'].values
-    
-    # --- XGBoost Cross-Validation ---
     tscv = TimeSeriesSplit(n_splits=3)
     sc = StandardScaler()
-    
-    def get_xgb_auc(X_addon):
-        X_full = np.hstack((X_market_sent, X_addon))
-        aucs = []
-        for tr, te in tscv.split(X_full):
-            model = xgb.XGBClassifier(n_estimators=100, max_depth=3, n_jobs=-1, random_state=42)
-            model.fit(sc.fit_transform(X_full[tr]), y[tr])
-            aucs.append(roc_auc_score(y[te], model.predict_proba(sc.transform(X_full[te]))[:, 1]))
-        return np.mean(aucs)
 
-    auc_fin = get_xgb_auc(X_fin_pca)
-    auc_tfidf = get_xgb_auc(X_tfidf_pca)
+    # --- GridSearchCV Tuning & Battle ---
+    def tune_and_evaluate(X_base, X_addon):
+        X_full = np.hstack((X_base, X_addon))
+        X_scaled = sc.fit_transform(X_full)
+        
+        xgb_model = xgb.XGBClassifier(n_jobs=-1, random_state=42, eval_metric='logloss')
+        grid = GridSearchCV(xgb_model, param_grid, cv=tscv, scoring='roc_auc', n_jobs=-1)
+        grid.fit(X_scaled, y)
+        
+        return grid.best_score_, grid.best_estimator_
+
+    X_market_sent = df_t[MARKET_BASE + SENT_BASE].values
     
-    print(f"  {ticker} -> FinBERT XGB: {auc_fin:.4f} | TF-IDF XGB: {auc_tfidf:.4f}")
+    print(f"  Tuning FinBERT path...")
+    auc_fin, best_model_fin = tune_and_evaluate(X_market_sent, fin_pca_data)
+    
+    print(f"  Tuning TF-IDF path...")
+    auc_tfidf, _ = tune_and_evaluate(X_market_sent, X_tfidf_pca)
+
+    # --- SHAP Interpretation (Using Best FinBERT Model) ---
+    X_final_df = pd.concat([df_t[MARKET_BASE + SENT_BASE], df_fin_pca], axis=1)
+    X_final_scaled = sc.fit_transform(X_final_df.values)
+    
+    explainer = shap.TreeExplainer(best_model_fin)
+    shap_values = explainer.shap_values(X_final_scaled)
+
+    # 1. Rank Importance Plot
+    plt.figure(figsize=(10, 8))
+    shap.summary_plot(shap_values, X_final_df, show=False)
+    plt.title(f'SHAP Importance (Tuned): {ticker}')
+    plt.savefig(f'poc/result/step4/shap_summary_{ticker}.png', bbox_inches='tight'); plt.close()
+
+    # 2. Contribution Percentage
+    abs_shap = np.abs(shap_values).mean(axis=0)
+    total_shap = abs_shap.sum()
+    
+    market_idx = [X_final_df.columns.get_loc(c) for c in MARKET_BASE]
+    sent_idx = [X_final_df.columns.get_loc(c) for c in SENT_BASE + pca_cols]
+    
+    mkt_contrib = abs_shap[market_idx].sum() / total_shap if total_shap > 0 else 0
+    sent_contrib = abs_shap[sent_idx].sum() / total_shap if total_shap > 0 else 0
+    
+    print(f"  {ticker} Result -> FinBERT AUC: {auc_fin:.4f} | Mkt: {mkt_contrib:.1%} vs Sent: {sent_contrib:.1%}")
     all_ticker_summary.append({
-        'Ticker': ticker, 'FinBERT_XGB_AUC': auc_fin, 
-        'TF-IDF_XGB_AUC': auc_tfidf, 'Delta': auc_fin - auc_tfidf
+        'Ticker': ticker, 'FinBERT_AUC': auc_fin, 'TF-IDF_AUC': auc_tfidf,
+        'Market_Contrib': mkt_contrib, 'Sent_Contrib': sent_contrib
     })
 
 # Final Report & Viz
@@ -127,16 +164,19 @@ res_df = pd.DataFrame(all_ticker_summary)
 plt.figure(figsize=(12, 6))
 x = np.arange(len(res_df))
 width = 0.35
-plt.bar(x - width/2, res_df['TF-IDF_XGB_AUC'], width, label='TF-IDF + XGB', color='lightgray')
-plt.bar(x + width/2, res_df['FinBERT_XGB_AUC'], width, label='FinBERT + XGB', color='skyblue')
+plt.bar(x - width/2, res_df['TF-IDF_AUC'], width, label='Tuned TF-IDF', color='lightgray')
+plt.bar(x + width/2, res_df['FinBERT_AUC'], width, label='Tuned FinBERT', color='skyblue')
 plt.xticks(x, res_df['Ticker'])
 plt.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
-plt.title('NLP Representation Battle (XGBoost Classifier)')
-plt.legend(); plt.savefig('poc/result/representation_comparison_xgb.png', bbox_inches='tight'); plt.close()
+plt.title('Tuned NLP Representation Battle (XGBoost)')
+plt.legend(); plt.savefig('poc/result/step4/representation_comparison_xgb.png', bbox_inches='tight'); plt.close()
 
-with open('poc/result/step4_results.txt', 'w') as f:
-    f.write("ST545 POC v9 Step 4 - NLP Representation Comparison (XGBoost)\n" + "="*70 + "\n")
-    f.write(res_df.to_string(index=False))
-    f.write(f"\n\nMean FinBERT Advantage: {res_df['Delta'].mean():+.4f}")
+with open('poc/result/step4/step4_results.txt', 'w') as f:
+    f.write("ST545 POC v9 Step 4 - Tuned NLP Battle & SHAP Attribution\n" + "="*70 + "\n")
+    f.write(res_df.to_string(index=False, formatters={
+        'Market_Contrib': '{:,.2%}'.format, 'Sent_Contrib': '{:,.2%}'.format
+    }))
+    f.write(f"\n\nMean Tuned FinBERT Advantage: {(res_df['FinBERT_AUC'] - res_df['TF-IDF_AUC']).mean():+.4f}")
+    f.write(f"\nMean Sentiment Attribution: {res_df['Sent_Contrib'].mean():.2%}")
 
-print("\n[+] Step 4 complete. NLP battle results saved.")
+print("\n[+] Step 4 complete. Tuned models, SHAP plots, and attribution results saved.")

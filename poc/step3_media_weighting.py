@@ -1,8 +1,9 @@
 """
 ST545 POC v9 (Comprehensive) — Step 3: Per-Ticker Media Weighting
 ==================================================================
-1. Ticker-specific Lasso analysis.
-2. Individual plots for EACH ticker (lasso coefficients, publisher importance).
+1. Ticker-specific Media Weighting analysis.
+2. Strategy: Try Lasso (L1) first for sparse signals.
+3. Fallback: If Lasso zeros all coefficients, use Ridge (L2) to show relative weights.
 """
 
 import pandas as pd
@@ -39,29 +40,49 @@ for ticker in TICKERS:
     pub_dummies = pd.get_dummies(df_t['Publisher'], prefix='pub')
     pub_names = pub_dummies.columns.tolist()
     sentiment = df_t['Sentiment_Score'].values.reshape(-1, 1)
-    X_inter = pub_dummies.values * sentiment
-    X_num = StandardScaler().fit_transform(df_t[['PE_Ratio', 'Volume']])
-    X = np.hstack((pub_dummies.values, sentiment, X_inter, X_num))
+    
+    # Pure Media Weighting: Only Interaction Terms (Publisher_i * Sentiment)
+    X = pub_dummies.values * sentiment
     y = df_t['Price_Label'].values
-    feat_names = pub_names + ['Sentiment'] + [f"{p}×Sent" for p in pub_names] + ['PE', 'Vol']
+    feat_names = [f"{p}×Sent" for p in pub_names]
 
-    lasso = LogisticRegressionCV(penalty='l1', solver='saga', cv=3, max_iter=5000, random_state=42).fit(X, y)
-    coefs = lasso.coef_[0]
+    # --- STEP A: Try Lasso (L1) ---
+    model = LogisticRegressionCV(penalty='l1', solver='saga', cv=3, max_iter=5000, random_state=42).fit(X, y)
+    coefs = model.coef_[0]
+    method = "Lasso (L1)"
 
-    # Plot 1: Coefficients
-    coef_df = pd.DataFrame({'Feature': feat_names, 'Coef': coefs}).loc[lambda x: x['Coef'] != 0].sort_values('Coef')
+    # --- STEP B: Fallback to Ridge (L2) if Lasso is empty ---
+    if np.sum(coefs != 0) == 0:
+        print(f"  {ticker}: Lasso zeroed all coefficients. Falling back to Ridge (L2)...")
+        model = LogisticRegressionCV(penalty='l2', cv=3, max_iter=5000, random_state=42).fit(X, y)
+        coefs = model.coef_[0]
+        method = "Ridge (L2)"
+    
+    non_zero = np.sum(coefs != 0)
+    print(f"  {ticker} Done ({method}). Samples: {len(df_t)}, Non-zero Coefficients: {non_zero}")
+
+    # Plot 1: Coefficients (Media Weights)
+    coef_df = pd.DataFrame({'Feature': feat_names, 'Coef': coefs})
+    # For Lasso, we only show non-zero. For Ridge, we show all since they are all non-zero.
+    if method == "Lasso (L1)":
+        coef_df = coef_df.loc[lambda x: x['Coef'] != 0]
+    
+    coef_df = coef_df.sort_values('Coef')
+
     if not coef_df.empty:
         plt.figure(figsize=(12, 8))
         colors = ['green' if c > 0 else 'red' for c in coef_df['Coef']]
         plt.barh(coef_df['Feature'], coef_df['Coef'], color=colors)
-        plt.title(f'Lasso Coefficients: {ticker}')
-        plt.savefig(f'poc/result/lasso_coef_{ticker}.png', bbox_inches='tight'); plt.close()
+        plt.title(f'Media Weighting ({method}): {ticker}')
+        plt.xlabel('Coefficient Weight')
+        plt.savefig(f'poc/result/step3/lasso_coef_{ticker}.png', bbox_inches='tight'); plt.close()
 
-        # Plot 2: Importance
-        pub_imp = {p: np.abs(coefs[feat_names.index(f"{p}×Sent")]) if f"{p}×Sent" in feat_names else 0 for p in pub_names}
+        # Plot 2: Importance (Absolute Magnitude)
         plt.figure(figsize=(10, 6))
-        sns.barplot(x=list(pub_imp.values()), y=list(pub_imp.keys()), palette='coolwarm')
-        plt.title(f'Publisher Importance: {ticker}')
-        plt.savefig(f'poc/result/pub_imp_{ticker}.png', bbox_inches='tight'); plt.close()
+        coef_df['Abs_Coef'] = coef_df['Coef'].abs()
+        coef_df = coef_df.sort_values('Abs_Coef', ascending=False)
+        sns.barplot(data=coef_df, x='Abs_Coef', y='Feature', palette='coolwarm')
+        plt.title(f'Publisher Importance ({method}): {ticker}')
+        plt.savefig(f'poc/result/step3/pub_imp_{ticker}.png', bbox_inches='tight'); plt.close()
 
-print("\n[+] Step 3 complete. Individual plots saved.")
+print("\n[+] Step 3 complete. Individual plots saved in poc/result/step3/")

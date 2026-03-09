@@ -62,12 +62,18 @@ cache_df = df[['Date', 'Ticker', 'Publisher', 'Headline', 'Summary', 'Sentiment_
 cache_df['Date'] = cache_df['Date'].dt.strftime('%Y-%m-%d')
 cache_df.to_csv(CACHE_PATH, index=False)
 print(f"\n[+] Sentiment cache saved: {CACHE_PATH}")
-print(f"    {len(cache_df)} rows, columns: {list(cache_df.columns)}")
-print(f"    Publisher distribution:")
-for pub, cnt in cache_df['Publisher'].value_counts().items():
-    mean_s = cache_df.loc[cache_df['Publisher'] == pub, 'Sentiment_Score'].mean()
-    print(f"      {pub:20s}  {cnt:>6d} articles  mean_sentiment={mean_s:+.4f}")
-print(f"    Per-ticker counts:")
-for t in TICKERS:
-    cnt = len(cache_df[cache_df['Ticker'] == t])
-    print(f"      {t:6s}  {cnt:>6d} articles")
+
+with open('poc/result/step0/sentiment_cache_summary.txt', 'w') as f:
+    f.write("ST545 POC v4 Step 0 - FinBERT Sentiment Cache Summary\n" + "="*60 + "\n")
+    f.write(f"Total articles: {len(cache_df)} across {cache_df['Ticker'].nunique()} tickers\n")
+    f.write(f"Mean sentiment: {cache_df['Sentiment_Score'].mean():.4f}, Std: {cache_df['Sentiment_Score'].std():.4f}\n\n")
+    f.write("Publisher distribution:\n")
+    for pub, cnt in cache_df['Publisher'].value_counts().items():
+        mean_s = cache_df.loc[cache_df['Publisher'] == pub, 'Sentiment_Score'].mean()
+        f.write(f"  {pub:20s}  {cnt:>6d} articles  mean_sentiment={mean_s:+.4f}\n")
+    f.write("\nPer-ticker counts:\n")
+    for t in TICKERS:
+        cnt = len(cache_df[cache_df['Ticker'] == t])
+        f.write(f"  {t:6s}  {cnt:>6d} articles\n")
+
+print(f"[+] Summary saved to poc/result/step0/sentiment_cache_summary.txt")

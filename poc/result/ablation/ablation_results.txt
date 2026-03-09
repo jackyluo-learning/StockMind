@@ -1,0 +1,17 @@
+ST545 POC v9 Ablation Report (Ticker: LMT)
+============================================================
+
+EXP 1: Model Class Comparison (Combined Features)
+--------------------------------------------------
+  XGBoost (Step 4)    : AUC=0.6269
+  Random Forest       : AUC=0.5440
+  MLP                 : AUC=0.5331
+
+EXP 2: Feature Group Comparison (Best Model: XGBoost (Step 4))
+--------------------------------------------------
+  Sentiment-only      : AUC=0.5404
+  Market-only         : AUC=0.5703
+  Combined            : AUC=0.6269
+
+Conclusion:
+  Synergy Confirmed: Combined features outperform individual groups.
