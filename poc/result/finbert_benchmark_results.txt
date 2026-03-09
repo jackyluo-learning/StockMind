@@ -1,5 +1,0 @@
-ST545 POC v9 Step 5 - Benchmarking
-========================================
-TF-IDF: AUC=0.4926
-FinBERT Embedding: AUC=0.5160
-FinBERT Probs: AUC=0.4942
