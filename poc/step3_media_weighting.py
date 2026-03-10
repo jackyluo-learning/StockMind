@@ -77,12 +77,18 @@ for ticker in TICKERS:
         plt.xlabel('Coefficient Weight')
         plt.savefig(f'poc/result/step3/lasso_coef_{ticker}.png', bbox_inches='tight'); plt.close()
 
-        # Plot 2: Importance (Absolute Magnitude)
-        plt.figure(figsize=(10, 6))
-        coef_df['Abs_Coef'] = coef_df['Coef'].abs()
-        coef_df = coef_df.sort_values('Abs_Coef', ascending=False)
-        sns.barplot(data=coef_df, x='Abs_Coef', y='Feature', palette='coolwarm')
-        plt.title(f'Publisher Importance ({method}): {ticker}')
-        plt.savefig(f'poc/result/step3/pub_imp_{ticker}.png', bbox_inches='tight'); plt.close()
+    # Plot 2: Importance (Absolute Magnitude)
+    plt.figure(figsize=(10, 6))
+    coef_df['Abs_Coef'] = coef_df['Coef'].abs()
+    coef_df = coef_df.sort_values('Abs_Coef', ascending=False)
+    sns.barplot(data=coef_df, x='Abs_Coef', y='Feature', palette='coolwarm')
+    plt.title(f'Publisher Importance ({method}): {ticker}')
+    plt.savefig(f'poc/result/step3/pub_imp_{ticker}.png', bbox_inches='tight'); plt.close()
+
+    # Save weights for Step 5
+    # Feature names were f"{p}×Sent" where p is pub_pubname
+    # We want to extract 'pubname'
+    coef_df['Publisher'] = coef_df['Feature'].str.replace('×Sent', '').str.replace('pub_', '')
+    coef_df[['Publisher', 'Coef']].to_csv(f'poc/result/step3/weights_{ticker}.csv', index=False)
 
 print("\n[+] Step 3 complete. Individual plots saved in poc/result/step3/")

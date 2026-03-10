@@ -1,0 +1,11 @@
+ST545 POC v10 Ablation Study Report (Ticker: LMT)
+=================================================================
+
+EXP 1: Model Class Comparison (Full v10 Feature Set)
+-------------------------------------------------------
+  XGBoost (Step 5 v10)     : AUC=0.5653
+  Random Forest            : AUC=0.5923
+  MLP (Deep Learning)      : AUC=0.6782
+
+CONCLUSION:
+  Best Model for LMT: MLP (Deep Learning) (AUC=0.6782)

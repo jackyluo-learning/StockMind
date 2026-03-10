@@ -1,0 +1,33 @@
+ST545 POC v13 Gated Hybrid - DQS Gating + Media Weights + TF-IDF (10) + FinBERT (8)
+==========================================================================================
+Ticker  Hybrid_AUC  Market_only  Sentiment_only  Keywords_only  Samples
+  NVDA    0.533773     0.522022        0.472851       0.549546      236
+ GOOGL    0.597134     0.509597        0.590791       0.535177      236
+  MSFT    0.537723     0.564027        0.410097       0.700854      236
+  AMZN    0.533179     0.520508        0.526807       0.646432      241
+  TSLA    0.486254     0.547672        0.501144       0.449601      241
+   LMT    0.564662     0.591827        0.500985       0.564253      222
+   NEM    0.492300     0.567760        0.449334       0.431826      230
+  AAPL    0.528096     0.566040        0.534833       0.527978      241
+  META    0.590392     0.540052        0.488438       0.682143      240
+   JPM    0.498720     0.501939        0.540235       0.476605      227
+
+------------------------------
+AGGREGATED PERFORMANCE MEANS:
+  Mean Hybrid AUC    : 0.5362
+  Mean Market-only   : 0.5431
+  Mean Sentiment-only: 0.5016
+  Mean Keywords-only : 0.5564
+------------------------------
+
+Per-Ticker Top Keywords (First 10):
+  NVDA  : aapl, present, pop, portfolio, posit, possibl, post, potenti, powel, power
+  GOOGL : boost, challeng, retail, believ, era, trend, roblox, gener, uncertainti, rank
+  MSFT  : reason, expert, role, industri, silver, lag, nasdaq, arista, competit, artifici
+  AMZN  : amp, action, yield, perplex, human, letter, debut, increas, forecast, slash
+  TSLA  : aapl, project, presid, pressur, previou, price, privat, pro, probe, problem
+  LMT   : acceler, predict, poland, polici, pop, portfolio, posit, possibl, post, potenti
+  NEM   : abr, previous, powel, power, pre, preciou, predict, premarket, premium, prepar
+  AAPL  : aapl, premarket, point, pois, polici, polit, popular, portfolio, posit, post
+  META  : search, indic, partnership, win, thiel, instagram, unit, past, long, disclos
+  JPM   : acceler, power, platform, play, plung, pm, point, pois, polici, polit

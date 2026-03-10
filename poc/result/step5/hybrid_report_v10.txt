@@ -1,27 +1,19 @@
-ST545 POC v10 Hybrid Experiment - TF-IDF (Lasso Top 20) + FinBERT (PCA 16)
+ST545 POC v10 Synergy Report - Lasso Top 10 + PCA 8 (Simple Mean)
 ================================================================================
-Ticker  Hybrid_AUC  Samples
-  NVDA    0.554243      236
- GOOGL    0.554344      236
-  MSFT    0.649463      236
-  AMZN    0.561833      241
-  TSLA    0.532601      241
-   LMT    0.587706      236
-   NEM    0.551462      237
-  AAPL    0.535715      241
-  META    0.550742      241
-   JPM    0.526021      235
+Ticker  Hybrid_AUC  Market_only  Sentiment_only  Keywords_only  Samples
+  NVDA    0.548115     0.522022        0.495124       0.549546      236
+ GOOGL    0.559849     0.509597        0.537412       0.535177      236
+  MSFT    0.589549     0.564027        0.459871       0.700854      236
+  AMZN    0.585925     0.520508        0.532220       0.646432      241
+  TSLA    0.543332     0.547672        0.506128       0.449601      241
+   LMT    0.565324     0.597226        0.505809       0.636488      236
+   NEM    0.543452     0.569214        0.458373       0.437869      237
+  AAPL    0.525967     0.566040        0.543483       0.527978      241
+  META    0.514802     0.537463        0.475159       0.583907      241
+   JPM    0.501372     0.509667        0.488895       0.448677      235
 
-Mean Hybrid AUC: 0.5604
-
-Per-Ticker Top Keywords (First 10):
-  NVDA  : aapl, present, pop, portfolio, posit, possibl, post, potenti, powel, power
-  GOOGL : boost, challeng, retail, believ, era, trend, roblox, gener, uncertainti, rank
-  MSFT  : reason, expert, role, industri, silver, lag, nasdaq, arista, competit, artifici
-  AMZN  : amp, action, yield, perplex, human, letter, debut, increas, forecast, slash
-  TSLA  : aapl, project, presid, pressur, previou, price, privat, pro, probe, problem
-  LMT   : good, seek, sourc, headlin, energi, supplier, long, make, examin, protect
-  NEM   : abr, previous, powel, power, pre, preciou, predict, premarket, premium, prepar
-  AAPL  : aapl, premarket, point, pois, polici, polit, popular, portfolio, posit, post
-  META  : partnership, reach, search, drop, zack, instagram, past, date, bofa, concern
-  JPM   : acceler, power, platform, play, plung, pm, point, pois, polici, polit
+AGGREGATED MEANS:
+  Mean Hybrid AUC    : 0.5478
+  Mean Market-only   : 0.5443
+  Mean Sentiment-only: 0.5002
+  Mean Keywords-only : 0.5517

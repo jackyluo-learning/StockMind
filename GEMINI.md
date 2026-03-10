@@ -1,15 +1,14 @@
 # 📈 StockMind - AI-Driven Stock Analysis
 
 ## 🎯 Project Overview
-**StockMind** is an advanced data pipeline and analysis platform designed for stock market prediction using hybrid data sources. It integrates market data (OHLCV), fundamental metrics (PE Ratios), and financial news for sentiment-weighted analysis.
+**StockMind** is an advanced data pipeline and analysis platform designed for stock market prediction using hybrid data sources. It integrates market data (OHLCV), fundamental metrics (PE Ratios), and financial news for sentiment-weighted interaction analysis.
 
 ### 🛠️ Core Technologies
 - **Language**: Python 3.14+ (Conda environment: `stock_mind`)
 - **APIs**:
-  - **Alpaca**: Used for stable historical daily bars and comprehensive news (Benzinga source).
-  - **Finnhub**: Used for historical and current fundamental metrics (Quarterly EPS/PE).
-  - **yfinance**: (Legacy/Secondary) used for additional market metadata.
-- **Data Handling**: `pandas`, `numpy`, `requests`, `scikit-learn`, `xgboost`, `shap`, `transformers`.
+  - **Alpaca**: Stable historical daily bars and comprehensive news (Benzinga source).
+  - **Finnhub**: Historical and current fundamental metrics (Quarterly EPS/PE).
+- **Data Handling**: `pandas`, `numpy`, `scikit-learn`, `xgboost`, `shap`, `transformers` (FinBERT).
 
 ## 🚀 Building and Running
 
@@ -20,66 +19,57 @@ conda activate stock_mind
 ```
 
 ### Key Commands
-- **Run the Hybrid Pipeline**: Fetches historical data and news, saving to the `dataset/` directory.
+- **Run Hybrid Pipeline**: Fetches historical data and news.
   ```bash
   python dataset/alpaca_finnhub_pipeline.py
   ```
-- **Execute Tuned ST545 POC**: Run the consolidated modeling, tuning, and interpretability analysis.
+- **Execute Synergy Analysis (v13)**: Run the gated hybrid NLP experiment.
   ```bash
-  python poc/step4_xgboost_shap.py
+  python poc/step5_hybrid_nlp_v13.py
   ```
-- **Execute Ablation Study**: Perform systematic feature and model comparison for LMT.
+- **Execute Model Comparison**: Systematic model class comparison (MLP focus).
   ```bash
   python poc/ablation_study.py
   ```
-- **Export Final Dataset**: Consolidate all ticker data into a single master feature matrix.
+- **Generate Comprehensive Report**: Aggregate all POC results into categorical summaries.
   ```bash
-  python export_final_dataset.py
+  python poc/compare_v10_v13.py
   ```
 
 ## 📂 Directory Structure
 
 - **`/dataset`**: Core pipeline logic and consolidated data storage.
-    - `alpaca_finnhub_pipeline.py`: Main hybrid data ingestion engine.
-    - `real_*_dataset.csv`: Final fused feature matrices for modeling (NVDA, MSFT, GOOGL).
-    - `sentiment_cache.csv`: Global news cache with FinBERT scores.
+    - `sentiment_cache.csv`: Global news cache with FinBERT scores and embeddings.
     - `finbert_embeddings_768_v8.npy`: High-dimensional semantic embeddings.
-- **`/poc`**: Proof of Concept for ST545 project modeling.
-    - `step0_sentiment_cache.py`: Pre-calculation and caching of FinBERT sentiment scores.
-    - `step1_2_eda_tfidf.py`: Unified NLP benchmarking (TF-IDF vs FinBERT) and global EDA.
-    - `step3_media_weighting.py`: Ticker-specific media weighting (Lasso with Ridge fallback).
-    - `step4_xgboost_shap.py`: Tuned NLP representation battle (XGBoost + GridSearchCV) and SHAP attribution.
-    - `ablation_study.py`: Systematic model and feature group synergy analysis (LMT focus).
-    - **`/result`**: Organized artifacts and reports from the POC phase.
-        - **/step0**: Sentiment cache summaries and distribution metrics.
-        - **/step1_2**: NLP benchmarking reports and publisher distribution plots.
-        - **/step3**: Media weighting coefficients and publisher importance charts for 10 tickers.
-        - **/step4**: Tuned XGBoost AUC comparison and SHAP summary plots.
-        - **/ablation**: Detailed synergy reports and model class comparisons for LMT.
-- **`/poc_v1` to `/poc_v7`**: Experimental archives and versioned iterations of the POC phase.
-- **`export_final_dataset.py`**: Script to generate the unified `final_daily_dataset.csv` from cached data.
-- **`ST545_StockMind_Progress_Report_V1_to_V5.md`**: Comprehensive review of project evolution.
+- **`/poc`**: Proof of Concept iterations.
+    - `step3_media_weighting.py`: Ticker-specific weighting (Lasso with Ridge fallback).
+    - `step5_hybrid_nlp_v10..v13.py`: Versioned synergy experiments (Lasso Keywords, PCA, Gating).
+    - `interpret_pca_text.py`: Diagnostic tool for mapping PCA components to financial drivers.
+    - `compare_v10_v13.py`: Categorical performance evaluator (Sector, Volume).
+    - **`/result`**: Artifacts and reports.
+        - **/step3**: Publisher importance charts and weights.
+        - **/step5**: Detailed synergy breakdowns and aggregated means for v10-v13.
+        - **/ablation**: Model class comparison (XGB vs RF vs MLP) for LMT.
+- **`ST545_StockMind_Progress_Report_V13.md`**: Current definitive status report.
 
 ## 🧪 Development Conventions
 
-1.  **Hybrid Data Strategy**: Prefer Alpaca for news and bars to avoid the aggressive rate-limiting often encountered with yfinance.
-2.  **Robust Error Handling**:
-    - Always wrap API calls in try-except blocks.
-    - Implement exponential backoff for `429 Too Many Requests`.
-3.  **Local Caching**: Implement aggressive local caching for raw data. **All dataset outputs must be saved to the `/dataset` folder.**
-4.  **Result Organization**: All POC artifacts must be saved into step-specific subdirectories within `poc/result/` to maintain clarity.
-5.  **Nonlinear Modeling**: Prioritize **XGBoost** with **GridSearchCV** tuning and **SHAP** interpretability. Utilize full **768-dim FinBERT embeddings** for semantic feature capture.
+1.  **DQS Gating**: Implement Data Quality Score gating: `(Count/10) * (1 - Std)`. Dampen semantic features on low-confidence trading days.
+2.  **Lasso Feature Selection**: Prioritize **Top 10 Keywords** specifically for each ticker to capture sparse "alpha tokens."
+3.  **Semantic Dimensionality**: 
+    - Use **PCA-16** for complex industrials (Precision focus).
+    - Use **PCA-8** for high-volume tech (Generalization focus).
+4.  **Deep Learning Shift**: Prioritize **MLP (Multi-Layer Perceptron)** for model fusion when XGBoost synergy gaps occur.
 
 ---
 *Note: This project is optimized for the Alpaca and Finnhub APIs. Ensure valid API keys are configured in the pipeline scripts.*
 
 ## 📈 Project Status
 
-### Recent Improvements (March 2026)
-- **Result Reorganization**: Restructured the `poc/result/` folder into a modular hierarchy (step0-step4, ablation) for better scalability and navigation.
-- **Deep Semantic Integration**: Updated Step 4 to perform PCA reduction directly on full **768-dimensional FinBERT embeddings**, capturing richer semantic signals than the previous 3-class scores.
-- **Hyperparameter Optimization**: Integrated `GridSearchCV` with `TimeSeriesSplit` across the pipeline, ensuring performance metrics reflect optimized model states.
-- **Robust Attribution (SHAP)**: Decomposed model logic into Sentiment vs. Market attribution. Findings reveal a dominant **~80% sentiment contribution** across the 10 core tickers.
-- **Media Weighting Fallback**: Implemented a **Lasso-to-Ridge fallback** mechanism in Step 3, ensuring valid media weighting profiles for all tickers even in low-signal regimes.
-- **Ablation Synergy**: Confirmed feature synergy for **LMT** (AUC 0.6269), proving that the combination of sentiment and market fundamentals significantly outperforms individual groups.
+### Latest Breakthroughs (March 2026)
+- **MLP Peak Performance**: Achieved **AUC 0.6782** for **LMT** using the MLP architecture, significantly outperforming tree-based models.
+- **Keyword Alpha Confirmation**: Lasso-selected keywords identified as the strongest standalone predictor (**Mean AUC 0.5564**).
+- **Gated Generalization**: Implementation of **DQS Gating** in v12/v13 provided **+6% AUC gains** for high-volume tech stocks (AAPL, GOOGL).
+- **Semantic Mapping**: Successfully mapped PCA Component 0 to **Growth/Innovation**, Component 1 to **Macro Shocks**, and Component 2 to **Sector Battles**.
+- **Categorical Strategy**: Transitioned to a **Modular Expert System**, selecting architecture based on ticker sector and volume profile.
 ---

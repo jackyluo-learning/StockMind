@@ -1,9 +1,8 @@
 """
-ST545 POC v9 (Comprehensive) — Systematic Ablation Study: LMT Focus
-====================================================================
-1. Model Comparison: Tuned RF, MLP vs. the already-tuned XGBoost from Step 4.
-2. Feature Ablation: Sentiment-only vs. Market-only vs. Combined.
-3. All models tuned via GridSearchCV with TimeSeriesSplit.
+ST545 POC v10 (Ablation) — Systematic Ablation Study: Model Comparison Focus
+========================================================================
+1. Model Comparison: Tuned RF, MLP vs. the pre-calculated v10 XGBoost (Step 5).
+2. Target Ticker: LMT
 """
 
 import pandas as pd
@@ -15,20 +14,41 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegressionCV
+import xgboost as xgb
+from nltk.stem import PorterStemmer
+from nltk.corpus import stopwords
+import re
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 1. Configuration ──
 TICKER = 'LMT'
 CACHE_PATH = 'dataset/sentiment_cache.csv'
 EMBED_CACHE_PATH = 'dataset/finbert_embeddings_768_v8.npy'
-STEP4_RESULT_PATH = 'poc/result/step4/step4_results.txt'
+STEP5_V10_PATH = 'poc/result/step5/hybrid_results_v10.csv'
+RESULT_PATH = 'poc/result/ablation/ablation_results_v10.txt'
 
-# 1. Load Data
-cache = pd.read_csv(CACHE_PATH)
-cache['Date'] = pd.to_datetime(cache['Date'])
+# Text Prep
+ps = PorterStemmer()
+stop_words = set(stopwords.words('english'))
+def preprocess_text(text):
+    if not isinstance(text, str): return ""
+    text = re.sub('[^a-zA-Z]', ' ', text).lower().split()
+    return ' '.join([ps.stem(word) for word in text if word not in stop_words])
+
+# ── 2. Load and Prepare Data (v10 Logic) ──
+print(f"--- Preparing Ablation Data for {TICKER} (v10 Config) ---")
+cache_df = pd.read_csv(CACHE_PATH)
 embeddings = np.load(EMBED_CACHE_PATH)
-cache_embed_cols = [f'emb_{i}' for i in range(768)]
-cache = pd.concat([cache.reset_index(drop=True), pd.DataFrame(embeddings, columns=cache_embed_cols)], axis=1)
+
+# Global PCA reduction (8-dim) for consistency with v10
+pca_8 = PCA(n_components=8, random_state=42)
+pca_data = pca_8.fit_transform(embeddings)
+pca_cols = [f'pca_{i}' for i in range(8)]
+cache_df = pd.concat([cache_df.reset_index(drop=True), pd.DataFrame(pca_data, columns=pca_cols)], axis=1)
+cache_df['Date'] = pd.to_datetime(cache_df['Date'])
 
 market = pd.read_csv(f"dataset/{TICKER}_market.csv")
 market['Date'] = pd.to_datetime(market['Date'])
@@ -41,44 +61,40 @@ market['pe_chg'] = market['PE_Ratio'].diff()
 market['ma10_ratio'] = market['Close'] / market['Close'].rolling(10).mean()
 market['volatility_5d'] = market['Close'].pct_change().rolling(5).std()
 
-ticker_news = cache[cache['Ticker'] == TICKER].copy()
-daily_sent = ticker_news.groupby('Date').agg({
-    'Sentiment_Score': ['mean', 'std', 'max'],
-    **{c: 'mean' for c in cache_embed_cols}
-}).reset_index()
-daily_sent.columns = ['Date', 'sent_mean', 'sent_std', 'sent_max'] + cache_embed_cols
-for lag in [1, 2, 3]: daily_sent[f'sent_mean_lag{lag}'] = daily_sent['sent_mean'].shift(lag)
+ticker_news = cache_df[cache_df['Ticker'] == TICKER].copy()
+ticker_news['Full_Text'] = ticker_news['Headline'].fillna('') + " " + ticker_news['Summary'].fillna('')
 
-df = pd.merge(market, daily_sent, on='Date', how='inner').dropna().reset_index(drop=True)
+# Daily Aggregation (Simple Mean per v10)
+agg_logic = {
+    'Full_Text': lambda x: " ".join(x),
+    'Sentiment_Score': 'mean',
+    **{c: 'mean' for c in pca_cols}
+}
+daily_agg = ticker_news.groupby('Date').agg(agg_logic).reset_index()
 
-# PCA Reduction (Consistent with Step 4)
-pca = PCA(n_components=16, random_state=42)
-pca_feats = pca.fit_transform(df[cache_embed_cols].values)
-MARKET_COLS = ['PE_Ratio', 'vol_pct_chg', 'pe_chg', 'ma10_ratio', 'volatility_5d']
-SENT_BASE = ['sent_mean', 'sent_std', 'sent_max', 'sent_mean_lag1', 'sent_mean_lag2', 'sent_mean_lag3']
-pca_cols = [f'pca_emb_{i}' for i in range(16)]
-df_pca = pd.DataFrame(pca_feats, columns=pca_cols)
+df_t = pd.merge(market, daily_agg, on='Date', how='inner').dropna().reset_index(drop=True)
 
-y = df['Price_Label'].values
+# ── 3. Feature Set Definitions ──
+y = df_t['Price_Label'].values
 tscv = TimeSeriesSplit(n_splits=3)
 sc = StandardScaler()
 
-# 2. Extract Step 4 Tuned XGBoost result for LMT
-xgb_auc = 0.5
-if os.path.exists(STEP4_RESULT_PATH):
-    try:
-        import re
-        with open(STEP4_RESULT_PATH, 'r') as f:
-            content = f.read()
-            # Match LMT line and extract the second numeric column (FinBERT_AUC)
-            # Format: LMT 0.626873 ...
-            match = re.search(r'LMT\s+([\d\.]+)', content)
-            if match:
-                xgb_auc = float(match.group(1))
-                print(f"--- Retrieved Tuned XGBoost AUC for LMT from Step 4: {xgb_auc:.4f} ---")
-    except Exception as e:
-        print(f"--- Warning: Could not parse Step 4 results: {e}. Defaulting XGBoost to 0.5 ---")
+# Full Combined Set
+MARKET_BASE = ['PE_Ratio', 'vol_pct_chg', 'pe_chg', 'ma10_ratio', 'volatility_5d']
+SENT_COLS = ['Sentiment_Score'] + pca_cols
+texts_processed = [preprocess_text(t) for t in df_t['Full_Text']]
+tfidf_vec = TfidfVectorizer(max_features=1000)
+tfidf_raw = tfidf_vec.fit_transform(texts_processed).toarray()
+lasso_model = LogisticRegressionCV(penalty='l1', solver='saga', cv=tscv, max_iter=5000, random_state=42).fit(sc.fit_transform(tfidf_raw), y)
+coef_df = pd.DataFrame({'word': tfidf_vec.get_feature_names_out(), 'coef_abs': np.abs(lasso_model.coef_[0])})
+top_10_idx = coef_df.sort_values('coef_abs', ascending=False).head(10).index
+X_keywords = tfidf_raw[:, top_10_idx]
 
+X_market = df_t[MARKET_BASE].values
+X_sent = df_t[SENT_COLS].values
+X_combined = np.hstack((X_market, X_sent, X_keywords))
+
+# ── 4. Training and Comparisons ──
 def tune_and_eval(X_in, model_type='rf'):
     X_scaled = sc.fit_transform(X_in)
     if model_type == 'rf':
@@ -90,61 +106,33 @@ def tune_and_eval(X_in, model_type='rf'):
     
     grid = GridSearchCV(m, params, cv=tscv, scoring='roc_auc', n_jobs=-1)
     grid.fit(X_scaled, y)
-    return float(grid.best_score_), grid.best_estimator_
+    return grid.best_score_
 
-# --- EXP 1: Model Comparison (Combined Features) ---
-print("\n>>> Comparing Tuned Models (RF, MLP)...")
-X_all = pd.concat([df[MARKET_COLS + SENT_BASE], df_pca], axis=1).values
-rf_auc, best_rf = tune_and_eval(X_all, 'rf')
-mlp_auc, best_mlp = tune_and_eval(X_all, 'mlp')
+# Retrieve the Pre-Calculated Combined AUC for LMT from Step 5
+xgb_v10_auc = 0.5
+if os.path.exists(STEP5_V10_PATH):
+    res = pd.read_csv(STEP5_V10_PATH)
+    lmt_row = res[res['Ticker'] == TICKER]
+    if not lmt_row.empty:
+        xgb_v10_auc = float(lmt_row['Hybrid_AUC'].values[0])
+        print(f"--- Retrieved v10 XGBoost AUC for {TICKER}: {xgb_v10_auc:.4f} ---")
 
-# Ensure all values are float for max()
-results_m = {'XGBoost (Step 4)': float(xgb_auc), 'Random Forest': float(rf_auc), 'MLP': float(mlp_auc)}
-
-# --- EXP 2: Feature Groups (Using Best Model from EXP 1) ---
-best_model_name = max(results_m, key=results_m.get)
-print(f"\n>>> Feature Ablation using {best_model_name}...")
-
-# Define sets
-X_sent = pd.concat([df[SENT_BASE], df_pca], axis=1).values
-X_market = df[MARKET_COLS].values
-
-def final_eval_fixed_model(X_in, model_name):
-    # For RF and MLP, we use the tuning logic again for fairness on the subset
-    if 'Random Forest' in model_name: auc, _ = tune_and_eval(X_in, 'rf')
-    elif 'MLP' in model_name: auc, _ = tune_and_eval(X_in, 'mlp')
-    else:
-        # If XGBoost was best, we re-run its tuning logic on this feature subset
-        import xgboost as xgb
-        X_scaled = sc.fit_transform(X_in)
-        grid = GridSearchCV(xgb.XGBClassifier(n_jobs=-1, random_state=42, eval_metric='logloss'), 
-                            {'n_estimators': [50, 100], 'max_depth': [3, 5]}, 
-                            cv=tscv, scoring='roc_auc', n_jobs=-1)
-        grid.fit(X_scaled, y)
-        auc = grid.best_score_
-    return auc
-
-res_f = {
-    'Sentiment-only': final_eval_fixed_model(X_sent, best_model_name),
-    'Market-only': final_eval_fixed_model(X_market, best_model_name),
-    'Combined': results_m[best_model_name]
+print("\n>>> Comparing Model Classes (Full Combined Set)...")
+results_m = {
+    'XGBoost (Step 5 v10)': xgb_v10_auc,
+    'Random Forest': tune_and_eval(X_combined, 'rf'),
+    'MLP (Deep Learning)': tune_and_eval(X_combined, 'mlp')
 }
 
-# Save
-with open('poc/result/ablation/ablation_results.txt', 'w') as f:
-    f.write(f"ST545 POC v9 Ablation Report (Ticker: {TICKER})\n" + "="*60 + "\n\n")
-    f.write(f"EXP 1: Model Class Comparison (Combined Features)\n")
-    f.write(f"--------------------------------------------------\n")
-    for k, v in results_m.items(): f.write(f"  {k:20s}: AUC={v:.4f}\n")
+# ── 5. Save Results ──
+with open(RESULT_PATH, 'w') as f:
+    f.write(f"ST545 POC v10 Ablation Study Report (Ticker: {TICKER})\n" + "="*65 + "\n\n")
+    f.write("EXP 1: Model Class Comparison (Full v10 Feature Set)\n")
+    f.write("-" * 55 + "\n")
+    for k, v in results_m.items(): f.write(f"  {k:25s}: AUC={v:.4f}\n")
     
-    f.write(f"\nEXP 2: Feature Group Comparison (Best Model: {best_model_name})\n")
-    f.write(f"--------------------------------------------------\n")
-    for k, v in res_f.items(): f.write(f"  {k:20s}: AUC={v:.4f}\n")
-    
-    f.write(f"\nConclusion:\n")
-    if res_f['Combined'] > res_f['Market-only'] and res_f['Combined'] > res_f['Sentiment-only']:
-        f.write("  Synergy Confirmed: Combined features outperform individual groups.\n")
-    else:
-        f.write("  Weak Synergy: One feature group dominates or captures most of the signal.\n")
+    f.write("\nCONCLUSION:\n")
+    best_m = max(results_m, key=results_m.get)
+    f.write(f"  Best Model for {TICKER}: {best_m} (AUC={results_m[best_m]:.4f})\n")
 
-print(f"\n[+] Ablation study complete for {TICKER}. Results in poc/result/ablation/ablation_results.txt")
+print(f"\n[+] Ablation study complete. Results in {RESULT_PATH}")
