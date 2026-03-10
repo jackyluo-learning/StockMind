@@ -1,0 +1,120 @@
+ST545 POC - FinBERT PCA Semantic Mapping (Top 3 Components)
+================================================================================
+
+COMPONENT 0 (Explains 33.53% variance)
+--------------------------------------
+
+>>> HIGH SCORE ARTICLES (Positive Correlation):
+- [AMZN] 2 Growth Stocks to Buy and Hold Forever
+  Summary: Amazon's constant innovation is a hallmark of a business that will still be around in 50 years.  Netflix is a highly profitable entertainment business...
+
+- [GOOGL] Pam Bondi Says Meta Removed Facebook Page Used To 'Dox And Target' ICE Agents: 'Wave Of Violence' Against ICE  Driven By Online Apps
+  Summary: Meta removed a Facebook page accused by the Justice Department of being used to &#34;dox and target&#34; ICE agents in Chicago, following similar acti...
+
+- [GOOGL] Bubble or not, AI continues to draw billions in investments
+  Summary: Whether we're in an AI bubble or not, the investments will eventually pay off....
+
+- [NVDA] Jensen Sold At The Top - Nvidia Stock Could Sink After Ominous Development
+  Summary: Nvidia Corp (NASDAQ:NVDA) has been the undisputed champion of the AI era, but ominous signals have emerged - insider selling and a high RSI. ...
+
+- [LMT] RTX's Raytheon Unit Secures a Contract to Aid RAM GMLS Program
+  Summary: Raytheon's $74 million contract win boosts RTX's missile defense role as RAM GMLS expands global naval deployment....
+
+
+>>> LOW SCORE ARTICLES (Negative Correlation):
+- [AAPL] Apple, Nvidia Have Lost a Combined $470 Billion in Market Value
+  Summary: Some of the world's biggest companies are on track to lose billions of dollars of value Thursday, with Trump's aggressive tariffs ripping through the ...
+
+- [MSFT] Cloud AI Update - Transforming Unstructured Data Integration with AI-Driven Solutions
+  Summary: In a significant advancement for the Cloud AI sector, Ataccama has announced the integration of its data trust platform, Ataccama ONE, with Snowflake ...
+
+- [NVDA] L&T Technology Services And NVIDIA Collaborate On AI Enabled Digital Twin Platform To Enhance Respiratory Diagnostics And Surgical Planning
+  Summary: nan...
+
+- [TSLA] Dow Jones Futures Fall Ahead Of Fed Meeting; Palantir Plunges On Earnings
+  Summary: Dow Jones Futures Fall Ahead Of Fed Meeting; Palantir Plunges On Earnings...
+
+- [META] 2 Call Writing Funds Delivering Steady Monthly Income With Different Strategies
+  Summary: We look at 2 CEFs that both focus on writing options, pay monthly distributions, and trade at historically attractive discount levels....
+
+
+================================================================================
+
+COMPONENT 1 (Explains 19.96% variance)
+--------------------------------------
+
+>>> HIGH SCORE ARTICLES (Positive Correlation):
+- [AAPL] Dow Jones Falls 200 Points On Trump Tariff News; Nvidia, Tesla Slide
+  Summary: Dow Jones Falls 200 Points On Trump Tariff News; Nvidia, Tesla Slide...
+
+- [GOOGL] Wall Street analyst sees Bitcoin hitting new highs despite U.S. shutdown
+  Summary: Standard Chartered analyst Geoffrey Kendrick predicts that Bitcoin will continue to rise during the shutdown....
+
+- [MSFT] Stock Market Today: Dow Jones Dips, But More Stocks Clear Entries; This Cheap Stock Rockets On Trump Report (Live Coverage)
+  Summary: The Dow Jones dipped Monday as AMD soared on an OpenAI deal. Tesla and Palantir rallied on the stock market today. Coinbase and Bitcoin rose....
+
+- [AAPL] Stock Market Today: Dow Gains Nearly 500 Points And Makes History, As S&P 500 Hits New High (Live Coverage)
+  Summary: Stock Market Today: Dow Gains Nearly 500 Points And Makes History, As S&P 500 Hits New High (Live Coverage)...
+
+- [META] Pavel Durov Says You'd Have To Be 'Braindead' To Believe WhatsApp Is Secure In 2026 As Lawsuit Puts Question Mark On App's Encryption
+  Summary: Telegram founder Pavel Durov criticized WhatsApp&#39;s security as Meta faces a lawsuit accusing it of misleading users about chat privacy, while Goog...
+
+
+>>> LOW SCORE ARTICLES (Negative Correlation):
+- [META] Amazon's $150 Billion AI Capex Surge Could Force Its First Big Bond Deal In Years
+  Summary: Amazon may need to tap Wall Street for funds as it faces rising AI and data center spending, despite sitting on $84 billion in cash....
+
+- [JPM] The Node: JPM’s BTC Lending Play
+  Summary: One of the trends that I’m keeping an eye on is the growing availability of bitcoin-backed loans. Let’s check in on the sector real quick....
+
+- [AAPL] 10 Information Technology Stocks With Whale Alerts In Today's Session
+  Summary:  ...
+
+- [NVDA] Political Tailwind? Congress Trading Ban Could Boost SPY, IVV
+  Summary: As Congress eyes a stock-trading ban for lawmakers, ETFs like SPY and IVV could emerge as the politically safe, diversified way to invest....
+
+- [JPM] Fed is likely to hold interest rates steady, resisting Trump pressure. Here’s what that means for borrowers
+  Summary: From mortgage rates to auto loans and credit cards, here’s a look at how the upcoming January Fed decision may affect your finances....
+
+
+================================================================================
+
+COMPONENT 2 (Explains 4.39% variance)
+-------------------------------------
+
+>>> HIGH SCORE ARTICLES (Positive Correlation):
+- [AMZN] Reddit Sues Anthropic Over AI Training Breach
+  Summary: Reddit files suit against Anthropic, claiming its user data was used to train AI models without a licensing deal...
+
+- [AAPL] How To Trade SPY, QQQ, AAPL, MSFT, NVDA, GOOGL, META, TSLA Using Technical Analysis
+  Summary:  ...
+
+- [MSFT] Cisco rolls out chip designed to connect AI data centers over vast distances
+  Summary: SAN FRANCISCO (Reuters) -Cisco Systems launched on Wednesday a new networking chip designed to connect artificial intelligence data centers, with the ...
+
+- [MSFT] Elon Musk Questions OpenAI's 'Nonprofit' Status After $500 Billion Valuation, Nvidia's $100 Billion Deal And AMD Stake
+  Summary: Elon Musk questioned how OpenAI can still call itself a nonprofit after striking billion-dollar deals with Nvidia and AMD....
+
+- [AMZN] 10 Consumer Discretionary Stocks With Whale Alerts In Today's Session
+  Summary:  ...
+
+
+>>> LOW SCORE ARTICLES (Negative Correlation):
+- [TSLA] Treasury Secretary Scott Bessent Touts Trump's $10K Tax Deduction On Auto Loans For 2025-2028 US-Made Vehicles: 'Putting Money Back In...'
+  Summary: Treasury Secretary Scott Bessent praised Trump&#39;s decision to allow $10,000 deduction on auto loan interest for US-made vehicles....
+
+- [LMT] Lockheed Martin Q2 Sales $18.16B Miss $18.63B Estimate
+  Summary: nan...
+
+- [JPM] Wall Street stocks traders comb through charts for clues to next S&P 500 move
+  Summary: (Bloomberg) -- In recent days, the wild swings in US stocks, largely driven by President Donald Trump’s repeated U-turns on tariffs, have caused many ...
+
+- [TSLA] Tesla Shares Fall as China Sales Rise but Europe Deliveries Collapse
+  Summary: Tesla Faces Europe Sales Meltdown as BYD Struggles with Profit Slump: Shares Edge Lower...
+
+- [LMT] Lockheed Martin’s Emberpoint Wildfire Venture Meets Valuation And Momentum Check
+  Summary: Lockheed Martin (NYSE:LMT) has launched EMBERPOINT, a joint venture with PG&E, Salesforce, and Wells Fargo. The partnership is focused on using advanc...
+
+
+================================================================================
+
