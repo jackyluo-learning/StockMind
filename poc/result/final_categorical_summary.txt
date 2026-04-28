@@ -1,0 +1,28 @@
+ST545 Final Categorical Analysis
+===================================
+Analyzed 40 experiments across 4 versions.
+
+BEST PER TICKER:
+Ticker  Hybrid_AUC Version         Category
+   LMT    0.603556     v12 Industrial/Other
+ GOOGL    0.597134     v13             Tech
+  META    0.590392     v13             Tech
+  MSFT    0.589549     v10             Tech
+  AMZN    0.585925     v10             Tech
+  AAPL    0.562019     v12             Tech
+  NVDA    0.548115     v10             Tech
+   NEM    0.543452     v10 Industrial/Other
+   JPM    0.543335     v12 Industrial/Other
+  TSLA    0.543332     v10             Tech
+
+VERSION PIVOT (MEAN HYBRID AUC):
+Category  Industrial/Other      Tech
+Version                             
+v10               0.536716  0.552506
+v11               0.541951  0.535747
+v12               0.554330  0.529378
+v13               0.518561  0.543793
+
+CONCLUSION:
+- High-Volume Tech benefited most from v13 (Gating + PCA 8).
+- Industrial/Value tickers (LMT) showed peak performance in v10-v12 (PCA 8/16 without Gating).

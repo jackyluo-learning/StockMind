@@ -35,13 +35,17 @@ conda activate stock_mind
   ```bash
   python poc/compare_v10_v13.py
   ```
+- **Export Final Dataset**: Generate the daily-level consolidated dataset for submission.
+  ```bash
+  python export_final_dataset.py
+  ```
 
 ## 📂 Directory Structure
 
 - **`/dataset`**: Core pipeline logic and consolidated data storage.
     - `sentiment_cache.csv`: Global news cache with FinBERT scores and embeddings.
     - `finbert_embeddings_768_v8.npy`: High-dimensional semantic embeddings.
-- **`/poc`**: Proof of Concept iterations.
+- **`/poc`**: Proof of Concept iterations (v1 - v13).
     - `step3_media_weighting.py`: Ticker-specific weighting (Lasso with Ridge fallback).
     - `step5_hybrid_nlp_v10..v13.py`: Versioned synergy experiments (Lasso Keywords, PCA, Gating).
     - `interpret_pca_text.py`: Diagnostic tool for mapping PCA components to financial drivers.
@@ -66,10 +70,16 @@ conda activate stock_mind
 
 ## 📈 Project Status
 
-### Latest Breakthroughs (March 2026)
-- **MLP Peak Performance**: Achieved **AUC 0.6782** for **LMT** using the MLP architecture, significantly outperforming tree-based models.
+### **[FINAL POC PHASE COMPLETE]** (April 2026)
+Successfully completed 13 POC iterations. Now transitioning from feature engineering to **Model Fusion**.
+
+### Latest Breakthroughs
+- **MLP Peak Performance**: Achieved **AUC 0.6782** for **LMT** using the MLP architecture, significantly outperforming tree-based models (+13% gain).
 - **Keyword Alpha Confirmation**: Lasso-selected keywords identified as the strongest standalone predictor (**Mean AUC 0.5564**).
+- **Synergy Gap Discovery**: Identified **Negative Synergy** in tree-based models (XGBoost) where combining features sometimes underperforms standalone keywords.
 - **Gated Generalization**: Implementation of **DQS Gating** in v12/v13 provided **+6% AUC gains** for high-volume tech stocks (AAPL, GOOGL).
 - **Semantic Mapping**: Successfully mapped PCA Component 0 to **Growth/Innovation**, Component 1 to **Macro Shocks**, and Component 2 to **Sector Battles**.
-- **Categorical Strategy**: Transitioned to a **Modular Expert System**, selecting architecture based on ticker sector and volume profile.
+- **Categorical Strategy**: Transitioned to a **Modular Expert System**:
+    - **MLP** for Industrials/Low-Volume (High Alpha capture).
+    - **Gated XGBoost** for Tech/High-Volume (Stability & Noise Filtering).
 ---
