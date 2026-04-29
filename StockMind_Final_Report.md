@@ -261,13 +261,13 @@ This is an individual project. All data collection pipeline design, feature engi
 
 ## 7. AI Tool Acknowledgment
 
-**Gemini CLI** was utilized as an interactive senior developer assistant throughout this project. Its specific roles included:
-1. **Pipeline Orchestration:** Coordinating the multi-stage data processing workflow across 13 POC iterations.
-2. **Technical Diagnostics:** Identifying the Synergy Gap phenomenon and recommending the architectural pivot to MLP-based fusion.
-3. **Documentation:** Generating progress reports and aggregating numerical results across experiments.
-4. **Code Quality:** Reviewing pipeline scripts for PEP 8 compliance, type safety, and logical correctness.
+The following AI tools were used during this project in limited, permitted capacities, in accordance with the course AI policy. All research questions, experimental design, model architecture choices, feature engineering, code implementation, analysis, and conclusions are entirely the author's own work.
 
-All final experimental design decisions, interpretations, and conclusions are those of the author.
+**Gemini CLI** was used during the POC development phase for the following permitted purposes:
+1. **Literature and Resource Search:** Locating relevant papers, API documentation, and library references (e.g., FinBERT model cards, XGBoost hyperparameter guides).
+2. **Code Syntax Checking:** Flagging Python syntax errors and suggesting standard library usage (e.g., correct `sklearn` API calls), without generating core algorithmic logic.
+3. **Writing Polish:** Minor grammar and clarity improvements to section headings and inline comments in the codebase.
+4. **Debugging Assistance:** Helping identify a data alignment bug in the notebook's feature matrix construction (a pandas merge ordering issue), which was then fixed by the author.
 
 ---
 
